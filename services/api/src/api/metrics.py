@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from api.deps import DbDep, PrincipalDep
 from api.schemas import (
@@ -17,6 +18,7 @@ from api.schemas import (
     MetricListItemOut,
     MetricOut,
 )
+from api.serializers import run_to_out
 from shared.db.models import Connector, DataPoint, ForecastRun, Metric
 
 router = APIRouter(tags=["metrics"])
@@ -86,32 +88,55 @@ def list_metrics(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep) ->
 @router.get("/metrics", response_model=list[MetricListItemOut])
 def list_all_metrics(db: DbDep, principal: PrincipalDep) -> list[MetricListItemOut]:
     """Org-wide dataset list with sparklines (doc 4 §3)."""
+    org_id = uuid.UUID(principal.org_id)
     metrics = db.scalars(
         select(Metric)
-        .where(Metric.organization_id == uuid.UUID(principal.org_id))
+        .where(Metric.organization_id == org_id)
+        .options(selectinload(Metric.connector))
         .order_by(Metric.created_at)
     ).all()
+
+    # One grouped count + one windowed sparkline query for the whole org,
+    # instead of two queries per metric (N+1 at "hundreds of metrics" scale).
+    counts: dict[uuid.UUID, int] = {
+        row[0]: row[1]
+        for row in db.execute(
+            select(DataPoint.metric_id, func.count())
+            .where(DataPoint.organization_id == org_id)
+            .group_by(DataPoint.metric_id)
+        ).all()
+    }
+    ranked = (
+        select(
+            DataPoint.metric_id,
+            DataPoint.timestamp,
+            DataPoint.value,
+            func.row_number()
+            .over(partition_by=DataPoint.metric_id, order_by=DataPoint.timestamp.desc())
+            .label("rn"),
+        )
+        .where(DataPoint.organization_id == org_id)
+        .subquery()
+    )
+    spark_rows = db.execute(
+        select(ranked.c.metric_id, ranked.c.timestamp, ranked.c.value)
+        .where(ranked.c.rn <= 30)
+        .order_by(ranked.c.metric_id, ranked.c.timestamp)
+    ).all()
+    sparks: dict[uuid.UUID, list[tuple]] = {}
+    for metric_id, ts, value in spark_rows:
+        sparks.setdefault(metric_id, []).append((ts, value))
+
     out: list[MetricListItemOut] = []
     for m in metrics:
-        recent = list(
-            db.scalars(
-                select(DataPoint)
-                .where(DataPoint.metric_id == m.id)
-                .order_by(DataPoint.timestamp.desc())
-                .limit(30)
-            ).all()
-        )
-        recent.reverse()
+        recent = sparks.get(m.id, [])
         out.append(
             MetricListItemOut(
                 **_metric_out(m).model_dump(),
                 connector_name=m.connector.name,
-                n_points=db.scalar(
-                    select(func.count()).select_from(DataPoint).where(DataPoint.metric_id == m.id)
-                )
-                or 0,
-                last_updated=recent[-1].timestamp if recent else None,
-                spark=[r.value for r in recent],
+                n_points=counts.get(m.id, 0),
+                last_updated=recent[-1][0] if recent else None,
+                spark=[v for _, v in recent],
             )
         )
     return out
@@ -162,10 +187,4 @@ def enqueue_forecast(
     )
     db.add(run)
     db.flush()
-    return _run_to_out(run)
-
-
-def _run_to_out(run: ForecastRun) -> ForecastRunOut:
-    from api.forecasts import run_to_out
-
     return run_to_out(run)

@@ -4,18 +4,31 @@ Polls pending runs with FOR UPDATE SKIP LOCKED (correct with one worker locally
 and N workers in production, unchanged), calls ml, writes forecast_points, and
 sets the terminal status. `worker` maps a success into the run, a warning into
 model_params, and a structured refusal into status='failed'.
+
+Transport-level ml failures (connection refused, 5xx) are retried with
+exponential backoff and a terminal cap (doc 1 §7): the attempt count and the
+next-attempt time ride in model_params so they survive worker restarts, and a
+run that keeps failing at the transport level becomes status='failed' instead
+of hot-looping against a down ml service forever.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from shared.db.models import DataPoint, ForecastPointRow, ForecastRun, Metric
 from shared.models import ForecastRequest, Point
+from shared.settings import Settings, get_settings
 from worker.forecast_client import ForecastClient, ForecastFailed
+
+log = logging.getLogger("worker.dispatch")
+
+ATTEMPTS_KEY = "dispatch_attempts"
+NEXT_ATTEMPT_KEY = "next_attempt_at"
 
 
 def _load_series(session: Session, metric_id) -> list[Point]:
@@ -71,12 +84,51 @@ def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> 
     run.completed_at = datetime.now(tz=UTC)
 
 
+def _record_transport_failure(run: ForecastRun, exc: Exception, settings: Settings) -> None:
+    """Requeue with exponential backoff, or fail terminally at the cap."""
+    params = dict(run.model_params or {})
+    attempts = int(params.get(ATTEMPTS_KEY, 0)) + 1
+    if attempts >= settings.forecast_dispatch_max_attempts:
+        run.status = "failed"
+        run.error_message = f"ml service unreachable after {attempts} attempts: {exc}"
+        run.completed_at = datetime.now(tz=UTC)
+        log.error("run %s failed terminally after %d transport errors", run.id, attempts)
+        return
+    delay = settings.forecast_dispatch_backoff_seconds * (2 ** (attempts - 1))
+    params[ATTEMPTS_KEY] = attempts
+    params[NEXT_ATTEMPT_KEY] = (datetime.now(tz=UTC) + timedelta(seconds=delay)).isoformat()
+    run.model_params = params
+    run.status = "pending"
+    log.warning(
+        "run %s transport failure %d/%d; retrying in %.0fs: %s",
+        run.id,
+        attempts,
+        settings.forecast_dispatch_max_attempts,
+        delay,
+        exc,
+    )
+
+
+def _backoff_active(run: ForecastRun) -> bool:
+    next_at = (run.model_params or {}).get(NEXT_ATTEMPT_KEY)
+    if not next_at:
+        return False
+    try:
+        return datetime.fromisoformat(next_at) > datetime.now(tz=UTC)
+    except ValueError:
+        return False
+
+
 def dispatch_pending_forecasts(
-    session: Session, client: ForecastClient, batch_size: int = 20
+    session: Session,
+    client: ForecastClient,
+    batch_size: int = 20,
+    settings: Settings | None = None,
 ) -> int:
     """Claim and process up to `batch_size` pending runs. Returns the count
     processed. Each run is committed independently so one failure can't roll
     back others."""
+    settings = settings or get_settings()
     pending = session.scalars(
         select(ForecastRun)
         .where(ForecastRun.status == "pending")
@@ -87,9 +139,16 @@ def dispatch_pending_forecasts(
 
     processed = 0
     for run in pending:
+        if _backoff_active(run):
+            continue  # leave pending; its next-attempt time hasn't arrived
         run.status = "running"
         session.flush()
-        _process_run(session, run, client)
+        try:
+            _process_run(session, run, client)
+        except Exception as exc:  # noqa: BLE001 — transport-level failure
+            session.rollback()  # discard any partial forecast_points
+            _record_transport_failure(run, exc, settings)
         session.commit()
         processed += 1
+    session.commit()  # release locks on skipped (backoff) rows
     return processed
