@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start"],
+      "cwd": "frontend",
+      "port": 3000,
+      "env": {
+        "NEXT_PUBLIC_APP_EDITION": "local",
+        "NEXT_PUBLIC_API_URL": "http://localhost:8000"
+      }
+    }
+  ]
+}

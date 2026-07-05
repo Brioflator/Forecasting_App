@@ -1,0 +1,22 @@
+[project]
+name = "forecast-worker"
+version = "0.1.0"
+description = "Worker service: scheduler + poller + forecast dispatch + outbox relay"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.10,<4",
+    "httpx>=0.27",
+    "jsonpath-ng>=1.6",
+    "croniter>=2",
+    "forecast-shared",
+]
+
+[tool.uv.sources]
+forecast-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/worker"]

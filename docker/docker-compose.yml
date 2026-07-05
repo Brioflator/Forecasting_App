@@ -1,0 +1,105 @@
+# The one-command local stack (doc 1 §8): pg, redis, api, worker, ml, frontend.
+# Fresh clone → cp .env.example .env && make up && make seed → rendered forecast
+# + downloaded CSV, no cloud account (guide §8 gate).
+
+name: forecast-platform
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: forecast
+      POSTGRES_PASSWORD: forecast
+      POSTGRES_DB: forecast
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forecast -d forecast"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  ml:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ml
+    env_file: ../.env
+    ports:
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8100/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    env_file: ../.env
+    environment:
+      # In-network address: the seeded connector's base_url is built from this,
+      # and the worker polls it over the compose network (plan 05 §2.5).
+      API_URL: http://api:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data/exports:/data/exports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    env_file: ../.env
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      ml:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_APP_EDITION: local
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    environment:
+      # Server components fetch over the compose network; the browser uses the
+      # published localhost port baked in above.
+      API_URL_INTERNAL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,14 @@
+# Agent source configuration — copy to agent.config.yaml and edit.
+# Each source polls one endpoint and forwards points for one metric_key
+# (the metric must exist on the connector this agent is registered to).
+heartbeat_seconds: 60
+sources:
+  - metric_key: sample_signups
+    base_url: http://host.docker.internal:8000/dev/sample-metric
+    value_path: "$.value"
+    timestamp_path: "$.timestamp"
+    interval_seconds: 60
+    # For sources that need auth — the credential stays on THIS machine:
+    # auth_header: Authorization
+    # auth_scheme: Bearer
+    # secret_env: SOURCE_API_KEY

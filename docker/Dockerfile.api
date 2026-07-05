@@ -1,0 +1,25 @@
+# api service image — only forecast-api's dependency closure + shared (doc 1 §4.0)
+FROM python:3.12-slim
+COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /uvx /bin/
+
+ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
+WORKDIR /app
+
+# Resolve deps first for layer caching: lockfile + all member manifests.
+COPY pyproject.toml uv.lock ./
+COPY shared/pyproject.toml shared/
+COPY services/api/pyproject.toml services/api/
+COPY services/worker/pyproject.toml services/worker/
+COPY services/ml/pyproject.toml services/ml/
+RUN uv sync --frozen --no-install-workspace --no-dev --package forecast-api
+
+# Then the source + migrations (api owns `alembic upgrade head` on boot) + seeds.
+COPY shared/ shared/
+COPY services/api/ services/api/
+COPY migrations/ migrations/
+COPY alembic.ini ./
+COPY connectors/ connectors/
+RUN uv sync --frozen --no-dev --package forecast-api
+
+EXPOSE 8000
+CMD ["sh", "-c", "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn api.app:app --host 0.0.0.0 --port 8000"]
