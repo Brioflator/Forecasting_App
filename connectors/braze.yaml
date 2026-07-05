@@ -1,0 +1,41 @@
+# Braze connector (guide §1, doc 1 §4.1): the same shape as generic_rest with
+# Braze-flavored defaults. Push is the preferred path — Braze Currents' Custom
+# HTTP Connector POSTs to the webhook URL the app provides, so no Braze
+# credential is ever stored (guide §7.1). Pull uses the Braze REST API with a
+# user-supplied endpoint + JSONPath.
+key: braze
+name: Braze
+description: >-
+  Ingest Braze KPIs. Preferred: push via Braze Currents Custom HTTP Connector
+  (paste the generated webhook URL into Braze). Alternatively poll the Braze
+  REST API (e.g. /kpi/new_users/data_series) with an API key.
+supports_pull: true
+supports_push: true
+supports_agent: true
+config_schema:
+  type: object
+  required: [base_url]
+  properties:
+    base_url:
+      type: string
+      title: "Braze REST endpoint"
+      format: uri
+      default: "https://rest.iad-01.braze.com/kpi/new_users/data_series?length=14"
+      description: "Only used for pull; push sources deliver to the webhook URL instead."
+    auth_header:
+      type: string
+      title: "Auth header name"
+      default: "Authorization"
+    auth_scheme:
+      type: string
+      title: "Scheme"
+      default: "Bearer"
+      enum: ["Bearer", "Basic", "raw"]
+    value_path:
+      type: string
+      title: "JSONPath to the metric value"
+      default: "$.data[-1:].new_users"
+    timestamp_path:
+      type: string
+      title: "JSONPath to the timestamp"
+      default: "$.data[-1:].time"

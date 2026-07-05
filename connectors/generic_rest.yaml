@@ -1,0 +1,34 @@
+# connectors/generic_rest.yaml  →  loaded into connector_definitions at startup
+# (doc 1 §4.1). The single config_schema is load-bearing in three places: the
+# frontend renders it into the wizard form, `api` validates submitted config
+# against it, and it documents the connector for contributors.
+key: generic_rest
+name: Generic REST API
+description: Poll any REST endpoint and pull a numeric value out of the JSON response.
+supports_pull: true
+supports_push: false
+supports_agent: true
+config_schema:
+  type: object
+  required: [base_url, value_path]
+  properties:
+    base_url:
+      type: string
+      title: "API URL"
+      format: uri
+    auth_header:
+      type: string
+      title: "Auth header name"
+      default: "Authorization"
+    auth_scheme:
+      type: string
+      title: "Scheme"
+      default: "Bearer"
+      enum: ["Bearer", "Basic", "raw"]
+    value_path:
+      type: string
+      title: "JSONPath to the metric value"
+      examples: ["$.data.count"]
+    timestamp_path:
+      type: string
+      title: "JSONPath to the timestamp (optional)"

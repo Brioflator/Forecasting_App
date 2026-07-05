@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "fastapi": {
+      "source": "fastapi/fastapi",
+      "sourceType": "github",
+      "skillPath": "fastapi/.agents/skills/fastapi/SKILL.md",
+      "computedHash": "187b2e06c41cdb6c6beeab15e6db4aeb1bf62f57735974646ad5646af8aacc66"
+    },
+    "multi-stage-dockerfile": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/multi-stage-dockerfile/SKILL.md",
+      "computedHash": "698bf93a84dae18fd7bd0b1d35c21427307fde78fbdf4624be9726f5f98189ca"
+    },
+    "nextjs-app-router-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/frontend-mobile-development/skills/nextjs-app-router-patterns/SKILL.md",
+      "computedHash": "3a46e9093baecb3a85819529ce05006f817663f48d9e872868c32ae6049c0d5c"
+    },
+    "postgresql-table-design": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/database-design/skills/postgresql/SKILL.md",
+      "computedHash": "d7d040ee506a300c08a64b9ef6de9aa677b6d7251e33c3c87e0608f821a9506d"
+    },
+    "pytest-coverage": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/pytest-coverage/SKILL.md",
+      "computedHash": "06481f4bbc6d80a52091ec9ba5856eb1dc5f80cbabb40fd4ad02aaea3085a0dc"
+    },
+    "redis-core": {
+      "source": "redis/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/redis-core/SKILL.md",
+      "computedHash": "2c0aedf490d57dc8e5ac4d38b5b92b57ceae5ac92ccb4e1ce30c9a0c6f643e30"
+    },
+    "sqlalchemy-alembic-expert-best-practices-code-review": {
+      "source": "wispbit-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/sqlalchemy-alembic-expert-best-practices-code-review/SKILL.md",
+      "computedHash": "222668fee09abd99945cc57b9be37eb105470ea0428548e7e4f2e7284bd1d8e2"
+    },
+    "stripe-best-practices": {
+      "source": "stripe/ai",
+      "sourceType": "github",
+      "skillPath": "skills/stripe-best-practices/SKILL.md",
+      "computedHash": "05035542ddccfec857392be4ea8ad3ba291ab4b4eb54a801f227503ccfeefddd"
+    },
+    "supabase": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase/SKILL.md",
+      "computedHash": "61638e85394d2e39d1109cbf607593afb9733e0de19cdf0b52ec9bc32d95ea74"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+      "computedHash": "3639bed1f40b3fbadae79fee631c42c89b2d1f5c30b05d5aa3cca06422a6bbbc"
+    },
+    "use-railway": {
+      "source": "railwayapp/railway-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/railway/skills/use-railway/SKILL.md",
+      "computedHash": "b69534502936639130a2f128ccdffa6f5e3d2d0b5c7b52665a68b5e4f1e213f7"
+    }
+  }
+}

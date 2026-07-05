@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Minimal theme for the RJSF-generated wizard form (ADR-006: the bounded,
+   one-time styling cost of schema-driven forms). */
+.rjsf-container fieldset {
+  @apply border-0 p-0;
+}
+.rjsf-container legend {
+  @apply hidden;
+}
+.rjsf-container .form-group,
+.rjsf-container .field {
+  @apply mb-4;
+}
+.rjsf-container label {
+  @apply block text-sm text-slate-600;
+}
+.rjsf-container input,
+.rjsf-container select,
+.rjsf-container textarea {
+  @apply mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm;
+}
+.rjsf-container .field-description,
+.rjsf-container .help-block {
+  @apply mt-1 text-xs text-slate-400;
+}
+.rjsf-container .text-danger,
+.rjsf-container .error-detail {
+  @apply mt-1 list-none p-0 text-xs text-red-600;
+}
+.rjsf-container .required {
+  @apply ml-0.5 text-red-500;
+}
