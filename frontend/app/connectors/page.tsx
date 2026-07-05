@@ -35,7 +35,12 @@ export default async function ConnectorsPage() {
           <li key={connector.id} className="rounded-lg border border-slate-200 bg-white p-5">
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium">{connector.name}</div>
+                <Link
+                  href={`/connectors/${connector.id}`}
+                  className="font-medium hover:text-blue-700"
+                >
+                  {connector.name} →
+                </Link>
                 <div className="mt-0.5 text-xs text-slate-500">
                   {connector.ingestion_method}
                   {connector.schedule_cron ? ` · cron ${connector.schedule_cron}` : ""}

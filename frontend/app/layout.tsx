@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import NotificationBell from "@/components/NotificationBell";
 import { getSession } from "@/lib/auth";
 import "./globals.css";
 
@@ -39,6 +40,7 @@ export default function RootLayout({
                 >
                   New connector
                 </Link>
+                <NotificationBell />
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
                   {session.orgName}
                 </span>

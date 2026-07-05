@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # how often the worker re-syncs pull jobs against the connectors table, so
     # wizard-created connectors start polling without a restart
     connector_sync_interval_seconds: float = 30
+    # anomaly detection (guide §5.7, v2.x pulled into the local product):
+    # actuals outside the latest forecast's confidence band → anomalies rows
+    anomaly_sweep_interval_seconds: float = 60  # 0 = disabled
 
     # ── ml knobs (doc 3 §4–§5) ──
     forecast_default_confidence: float = 0.95

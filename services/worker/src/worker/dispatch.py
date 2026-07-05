@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from shared.db.models import DataPoint, ForecastPointRow, ForecastRun, Metric
+from shared.db.models import DataPoint, ForecastPointRow, ForecastRun, Metric, Notification
 from shared.models import ForecastRequest, Point
 from shared.settings import Settings, get_settings
 from worker.forecast_client import ForecastClient, ForecastFailed
@@ -82,6 +82,19 @@ def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> 
     }
     run.status = "completed"
     run.completed_at = datetime.now(tz=UTC)
+    session.add(
+        Notification(
+            organization_id=run.organization_id,
+            type="forecast_completed",
+            payload={
+                "forecast_run_id": str(run.id),
+                "metric_id": str(run.metric_id),
+                "metric_name": metric.name,
+                "model": result.get("model"),
+                "warning": result.get("warning"),
+            },
+        )
+    )
 
 
 def _record_transport_failure(run: ForecastRun, exc: Exception, settings: Settings) -> None:

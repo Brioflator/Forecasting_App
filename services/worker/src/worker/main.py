@@ -126,6 +126,19 @@ def _register_maintenance_jobs(scheduler: BackgroundScheduler, settings) -> None
     scheduler.add_job(_partitions, CronTrigger.from_crontab("30 2 * * *"), id="partition-maint")
     scheduler.add_job(_agents, IntervalTrigger(minutes=1), id="agent-staleness")
 
+    if settings.anomaly_sweep_interval_seconds > 0:
+        from worker.anomalies import detect_anomalies
+
+        def _anomalies() -> None:
+            with factory() as session:
+                detect_anomalies(session)
+
+        scheduler.add_job(
+            _anomalies,
+            IntervalTrigger(seconds=settings.anomaly_sweep_interval_seconds),
+            id="anomaly-sweep",
+        )
+
 
 def main() -> None:
     settings = get_settings()

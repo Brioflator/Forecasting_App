@@ -4,13 +4,18 @@ import { authHeaders } from "./auth";
 import type {
   AgentInfo,
   AgentRegistration,
+  AnomalyItem,
   Connector,
   ConnectorDefinition,
+  ConnectorRunItem,
+  Dashboard,
   EdaReport,
   ForecastRun,
+  ForecastRunSummary,
   Metric,
   MetricData,
   MetricListItem,
+  NotificationItem,
   ShareLink,
 } from "./types";
 
@@ -88,4 +93,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ connector_id: connectorId }),
     }),
+  getConnector: (id: string) => req<Connector>(`/connectors/${id}`),
+  updateConnector: (id: string, body: Record<string, unknown>) =>
+    req<Connector>(`/connectors/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteConnector: (id: string) =>
+    fetch(`${BASE}/connectors/${id}`, { method: "DELETE", headers: authHeaders() }),
+  listConnectorRuns: (id: string) => req<ConnectorRunItem[]>(`/connectors/${id}/runs`),
+  updateMetric: (id: string, body: Record<string, unknown>) =>
+    req<Metric>(`/metrics/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteMetric: (id: string) =>
+    fetch(`${BASE}/metrics/${id}`, { method: "DELETE", headers: authHeaders() }),
+  listMetricForecasts: (id: string) =>
+    req<ForecastRunSummary[]>(`/metrics/${id}/forecasts`),
+  listMetricAnomalies: (id: string) => req<AnomalyItem[]>(`/metrics/${id}/anomalies`),
+  listNotifications: (unreadOnly = false) =>
+    req<NotificationItem[]>(`/notifications?unread_only=${unreadOnly}`),
+  markNotificationRead: (id: string) =>
+    req<NotificationItem>(`/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () =>
+    req<{ marked_read: number }>("/notifications/read-all", { method: "POST" }),
+  getDashboard: () => req<Dashboard>("/dashboard"),
 };

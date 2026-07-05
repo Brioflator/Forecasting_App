@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from jsonschema import Draft7Validator
 from sqlalchemy import select
 
@@ -14,9 +14,10 @@ from api.schemas import (
     ConnectorCreate,
     ConnectorDefinitionOut,
     ConnectorOut,
+    ConnectorRunOut,
     ConnectorUpdate,
 )
-from shared.db.models import Connector, ConnectorDefinition
+from shared.db.models import Connector, ConnectorDefinition, ConnectorRun
 
 router = APIRouter(tags=["connectors"])
 
@@ -108,6 +109,53 @@ def _get_owned(db: DbDep, principal: PrincipalDep, connector_id: uuid.UUID) -> C
 @router.get("/connectors/{connector_id}", response_model=ConnectorOut)
 def get_connector(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> ConnectorOut:
     return _to_out(_get_owned(db, principal, connector_id))
+
+
+@router.delete("/connectors/{connector_id}", status_code=204)
+def delete_connector(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> None:
+    """Delete a connector and everything under it (metrics/points cascade).
+    The stored secret is revoked first so no orphaned credential lingers in
+    the SecretsProvider (guide §7.5 instant-revocation posture)."""
+    connector = _get_owned(db, principal, connector_id)
+    if connector.secret_ref:
+        from shared.factory import make_secrets_provider
+        from shared.settings import get_settings
+
+        try:
+            make_secrets_provider(get_settings()).revoke_secret(
+                principal.org_id, connector.secret_ref
+            )
+        except Exception:  # noqa: BLE001 — a missing secret must not block deletion
+            pass
+    db.delete(connector)
+
+
+@router.get("/connectors/{connector_id}/runs", response_model=list[ConnectorRunOut])
+def list_connector_runs(
+    connector_id: uuid.UUID,
+    db: DbDep,
+    principal: PrincipalDep,
+    limit: int = Query(20, ge=1, le=100),
+) -> list[ConnectorRunOut]:
+    """Poll audit history for the connector detail screen (doc 1 §7)."""
+    connector = _get_owned(db, principal, connector_id)
+    rows = db.scalars(
+        select(ConnectorRun)
+        .where(ConnectorRun.connector_id == connector.id)
+        .order_by(ConnectorRun.started_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        ConnectorRunOut(
+            id=r.id,
+            started_at=r.started_at,
+            finished_at=r.finished_at,
+            status=r.status,
+            records_ingested=r.records_ingested,
+            error_message=r.error_message,
+        )
+        for r in rows
+    ]
 
 
 @router.patch("/connectors/{connector_id}", response_model=ConnectorOut)

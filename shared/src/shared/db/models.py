@@ -91,7 +91,11 @@ class Connector(Base):
     )
 
     definition: Mapped[ConnectorDefinition] = relationship(lazy="joined")
-    metrics: Mapped[list[Metric]] = relationship(back_populates="connector")
+    # passive_deletes: the FK's ON DELETE CASCADE does the work — without it the
+    # ORM tries to NULL children's connector_id on delete (NOT NULL violation).
+    metrics: Mapped[list[Metric]] = relationship(
+        back_populates="connector", cascade="all, delete-orphan", passive_deletes=True
+    )
 
     __table_args__ = (
         CheckConstraint("ingestion_method IN ('push','pull','agent')", name="ck_connector_method"),
@@ -310,6 +314,31 @@ class EdaReportRow(Base):
     stationarity: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     seasonality: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     acf_pacf: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class Anomaly(Base):
+    __tablename__ = "anomalies"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    metric_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metrics.id", ondelete="CASCADE"), nullable=False
+    )
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    actual_value: Mapped[float] = mapped_column(Float, nullable=False)
+    expected_value: Mapped[float | None] = mapped_column(Float)
+    severity: Mapped[str] = mapped_column(Text, nullable=False, server_default="medium")
+    method: Mapped[str] = mapped_column(Text, nullable=False, server_default="residual_threshold")
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("severity IN ('low','medium','high')", name="ck_anomaly_severity"),
+    )
 
 
 class Notification(Base):
