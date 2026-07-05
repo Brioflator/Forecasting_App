@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # auto-forecast-on-ingest consumer (plan 05 §4 "real event path"); 0 = off
     auto_forecast_min_interval_minutes: int = 15
     auto_forecast_horizon: int = 24
+    # transport-level ml failures: exponential backoff, then terminal failure
+    # (doc 1 §7 "ml failures are HTTP errors the worker retries with backoff")
+    forecast_dispatch_max_attempts: int = 5
+    forecast_dispatch_backoff_seconds: float = 5
+    # how often the worker re-syncs pull jobs against the connectors table, so
+    # wizard-created connectors start polling without a restart
+    connector_sync_interval_seconds: float = 30
 
     # ── ml knobs (doc 3 §4–§5) ──
     forecast_default_confidence: float = 0.95

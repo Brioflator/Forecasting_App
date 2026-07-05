@@ -29,10 +29,27 @@ from worker.relay import relay_outbox
 log = logging.getLogger("worker.main")
 
 
-def _register_pull_jobs(scheduler: BackgroundScheduler, settings) -> None:
+def _make_poll(connector_id, settings, secrets):
+    def _job() -> None:
+        with session_mod.get_session_factory(settings)() as s:
+            connector = s.get(Connector, connector_id)
+            if connector is not None:
+                poll_connector(s, connector, secrets, settings)
+
+    return _job
+
+
+def sync_pull_jobs(scheduler: BackgroundScheduler, settings, secrets) -> tuple[int, int]:
+    """Reconcile scheduler jobs against the connectors table.
+
+    Runs at startup AND on an interval: connectors created/paused through the
+    wizard at runtime start/stop polling without a worker restart. Returns
+    (added, removed) for observability. Cron changes are picked up too because
+    jobs are re-added with replace_existing (cron triggers fire on wall-clock
+    boundaries, so re-adding never delays the next run).
+    """
     from apscheduler.triggers.cron import CronTrigger
 
-    secrets = make_secrets_provider(settings)
     factory = session_mod.get_session_factory(settings)
     with factory() as session:
         connectors = session.scalars(
@@ -40,26 +57,31 @@ def _register_pull_jobs(scheduler: BackgroundScheduler, settings) -> None:
                 Connector.ingestion_method == "pull", Connector.status != "paused"
             )
         ).all()
-        connector_ids = [
-            (c.id, c.schedule_cron or settings.default_cadence_cron) for c in connectors
-        ]
+        desired = {
+            f"poll-{c.id}": (c.id, c.schedule_cron or settings.default_cadence_cron)
+            for c in connectors
+        }
 
-    def _make_poll(connector_id):
-        def _job() -> None:
-            with session_mod.get_session_factory(settings)() as s:
-                connector = s.get(Connector, connector_id)
-                if connector is not None:
-                    poll_connector(s, connector, secrets, settings)
-
-        return _job
-
-    for connector_id, cron in connector_ids:
+    existing = {job.id for job in scheduler.get_jobs() if job.id.startswith("poll-")}
+    added = 0
+    for job_id, (connector_id, cron) in desired.items():
         scheduler.add_job(
-            _make_poll(connector_id),
+            _make_poll(connector_id, settings, secrets),
             CronTrigger.from_crontab(cron),
-            id=f"poll-{connector_id}",
+            id=job_id,
             replace_existing=True,
         )
+        if job_id not in existing:
+            added += 1
+
+    removed = 0
+    for job_id in existing - set(desired):
+        scheduler.remove_job(job_id)
+        removed += 1
+
+    if added or removed:
+        log.info("pull-job sync: +%d / -%d (total %d)", added, removed, len(desired))
+    return added, removed
 
 
 def _dispatch_loop(settings, stop: threading.Event) -> None:
@@ -110,9 +132,19 @@ def main() -> None:
     configure_logging("worker", settings.log_level)
     default_registry()
 
+    secrets = make_secrets_provider(settings)
     scheduler = BackgroundScheduler()
-    _register_pull_jobs(scheduler, settings)
+    sync_pull_jobs(scheduler, settings, secrets)
     _register_maintenance_jobs(scheduler, settings)
+
+    # Keep pull jobs in sync with runtime-created/paused connectors (wizard).
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    scheduler.add_job(
+        lambda: sync_pull_jobs(scheduler, settings, secrets),
+        IntervalTrigger(seconds=settings.connector_sync_interval_seconds),
+        id="connector-sync",
+    )
     scheduler.start()
 
     # One bus instance shared by the relay (publisher) and the consumers —

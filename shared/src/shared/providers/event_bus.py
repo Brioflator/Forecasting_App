@@ -5,9 +5,12 @@ RedisEventBus over Redis Streams (ADR-002). Kafka/SQS-SNS is doc 2.
 """
 
 import json
+import logging
 import threading
 from collections.abc import Callable
 from typing import Any, Protocol
+
+_log = logging.getLogger("shared.event_bus")
 
 
 class EventBus(Protocol):
@@ -50,26 +53,48 @@ class RedisEventBus:
     def publish(self, topic: str, payload: dict) -> None:
         self._redis().xadd(topic, {"payload": json.dumps(payload, default=str)})
 
-    def subscribe(self, topic: str, handler: Callable[[dict], None]) -> None:
-        r = self._redis()
+    def _ensure_group(self, topic: str) -> None:
         try:
-            r.xgroup_create(topic, self._group, id="0", mkstream=True)
+            self._redis().xgroup_create(topic, self._group, id="0", mkstream=True)
         except Exception as exc:  # BUSYGROUP = group already exists, fine
             if "BUSYGROUP" not in str(exc):
                 raise
 
+    def consume_batch(self, topic: str, consumer: str, handler: Callable[[dict], None]) -> int:
+        """Read + handle + ack one batch. Split out so the loop's error
+        handling is testable without a live broker. Returns messages handled."""
+        r = self._redis()
+        entries = r.xreadgroup(self._group, consumer, {topic: ">"}, count=10, block=self._block_ms)
+        handled = 0
+        for _stream, messages in entries or []:
+            for msg_id, fields in messages:
+                try:
+                    handler(json.loads(fields["payload"]))
+                except Exception:  # noqa: BLE001 — a bad handler must not kill the consumer
+                    _log.exception("event handler failed for %s", topic)
+                finally:
+                    r.xack(topic, self._group, msg_id)
+                    handled += 1
+        return handled
+
+    def subscribe(self, topic: str, handler: Callable[[dict], None]) -> None:
+        self._ensure_group(topic)
+
         def _loop() -> None:
             consumer = f"{self._group}-{threading.get_ident()}"
             while not self._stopping.is_set():
-                entries = r.xreadgroup(
-                    self._group, consumer, {topic: ">"}, count=10, block=self._block_ms
-                )
-                for _stream, messages in entries or []:
-                    for msg_id, fields in messages:
-                        try:
-                            handler(json.loads(fields["payload"]))
-                        finally:
-                            r.xack(topic, self._group, msg_id)
+                try:
+                    self.consume_batch(topic, consumer, handler)
+                except Exception as exc:  # noqa: BLE001 — transient broker outage
+                    # The consumer thread must survive a Redis blip or restart:
+                    # log, wait, re-ensure the group (streams may be gone after
+                    # an unpersisted restart), and keep reading.
+                    _log.warning("event bus read failed on %s; retrying: %s", topic, exc)
+                    self._stopping.wait(1.0)
+                    try:
+                        self._ensure_group(topic)
+                    except Exception:  # noqa: BLE001 — still down; next loop retries
+                        pass
 
         thread = threading.Thread(target=_loop, daemon=True, name=f"eventbus-{topic}")
         thread.start()

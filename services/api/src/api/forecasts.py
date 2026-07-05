@@ -11,36 +11,11 @@ from sqlalchemy import select
 
 from api.deps import BlobDep, DbDep, PrincipalDep
 from api.export import CONTENT_TYPES, create_export
-from api.schemas import ForecastPointOut, ForecastRunOut
+from api.schemas import ForecastRunOut
+from api.serializers import run_to_out
 from shared.db.models import ExportJob, ForecastRun
 
 router = APIRouter(tags=["forecasts"])
-
-
-def run_to_out(run: ForecastRun) -> ForecastRunOut:
-    warning = run.model_params.get("warning") if isinstance(run.model_params, dict) else None
-    points = sorted(run.points, key=lambda p: p.timestamp)
-    return ForecastRunOut(
-        id=run.id,
-        metric_id=run.metric_id,
-        model_type=run.model_type,
-        model_params=run.model_params,
-        horizon=run.horizon,
-        status=run.status,
-        requested_at=run.requested_at,
-        completed_at=run.completed_at,
-        error_message=run.error_message,
-        warning=warning,
-        points=[
-            ForecastPointOut(
-                timestamp=p.timestamp,
-                predicted=p.predicted_value,
-                lower=p.lower_bound,
-                upper=p.upper_bound,
-            )
-            for p in points
-        ],
-    )
 
 
 def _owned_run(db: DbDep, org_id: str, forecast_id: uuid.UUID) -> ForecastRun:
@@ -75,15 +50,12 @@ def export_forecast(
     run = _owned_run(db, principal.org_id, forecast_id)
     if run.status != "completed":
         raise HTTPException(409, f"forecast is not completed (status={run.status})")
-    job, payload = create_export(db, blob_store, run, format, uuid.UUID(principal.user_id))
+    _, payload = create_export(db, blob_store, run, format, uuid.UUID(principal.user_id))
     filename = f"forecast_{run.id}.{format}"
     return StreamingResponse(
         iter([payload]),
         media_type=CONTENT_TYPES[format],
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "X-Share-Token": job.share_token or "",
-        },
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

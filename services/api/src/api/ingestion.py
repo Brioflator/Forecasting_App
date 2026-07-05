@@ -25,6 +25,16 @@ from shared.models import IngestPayload
 
 router = APIRouter(tags=["ingestion"])
 
+# Bound a single delivery: Starlette doesn't cap request bodies by default, so
+# without this a misbehaving push source could stuff arbitrarily large payloads
+# straight into data_points (one outbox row per point rides along).
+MAX_POINTS_PER_REQUEST = 10_000
+
+
+def _check_size(payload: IngestPayload) -> None:
+    if len(payload.points) > MAX_POINTS_PER_REQUEST:
+        raise HTTPException(413, f"too many points in one delivery (max {MAX_POINTS_PER_REQUEST})")
+
 
 def _resolve_metric(db: DbDep, connector: Connector, metric_key: str) -> Metric:
     metric = db.scalar(
@@ -37,6 +47,7 @@ def _resolve_metric(db: DbDep, connector: Connector, metric_key: str) -> Metric:
 
 @router.post("/webhooks/{webhook_token}", status_code=202)
 def webhook_ingress(webhook_token: str, payload: IngestPayload, db: DbDep) -> dict[str, int]:
+    _check_size(payload)
     connector = db.scalar(select(Connector).where(Connector.webhook_token == webhook_token))
     if connector is None or connector.status == "paused":
         # 404 (not 401/403) so the token can't be probed apart from unknown paths.
@@ -66,6 +77,7 @@ def agent_ingest(
     db: DbDep,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, int]:
+    _check_size(payload)
     agent = _agent_from_bearer(db, authorization)
     if agent.connector_id is None:
         raise HTTPException(409, "agent is not bound to a connector")

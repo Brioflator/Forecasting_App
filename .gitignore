@@ -13,3 +13,7 @@ frontend/.next/
 frontend/.env
 !frontend/.env.example
 connectors.env
+graphify-out/
+.claude/
+skills-lock.json
+agent/agent.config.yaml

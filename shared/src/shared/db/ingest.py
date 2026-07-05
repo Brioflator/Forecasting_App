@@ -20,6 +20,11 @@ def upsert_points(session: Session, metric: Metric, points: list[Point], source:
     of points written (inserted or updated)."""
     if not points:
         return 0
+    # Dedupe within the payload (last write wins): a multi-row ON CONFLICT DO
+    # UPDATE that hits the same (metric_id, timestamp) twice in ONE statement
+    # raises "cannot affect row a second time" — and push sources do send
+    # duplicate timestamps in a single delivery.
+    points = list({p.timestamp: p for p in points}.values())
     rows = [
         {
             "metric_id": metric.id,
