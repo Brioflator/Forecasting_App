@@ -25,14 +25,13 @@ from ml.constants import (
     AUTO_ARIMA_MAXITER,
     CANDIDATE_PERIODS,
     GAP_FILL_MAX_FRACTION,
-    MAX_FIT_POINTS,
     SARIMA_MAX_M,
     SEASONALITY_ACF_THRESHOLD,
     TREND_MIN,
     seasonal_min,
 )
 from ml.errors import InsufficientData
-from ml.regularize import regularize
+from ml.regularize import cap_fit_window, regularize
 from shared.models import Point
 
 VALID_MODELS = {"auto", "sarima", "ets", "prophet"}
@@ -409,12 +408,11 @@ def forecast(
         raise InsufficientData(min_required=ABS_MIN, received=len(series))
 
     reg = regularize(series)
-    s, freq = reg.series, reg.frequency
-    # Train on a bounded recent window: per-fit time/memory must not grow with
-    # the metric's lifetime (unbounded fits are what used to OOM the service),
-    # and recent history is what local models actually use.
-    if len(s) > MAX_FIT_POINTS:
-        s = s.tail(MAX_FIT_POINTS)
+    freq = reg.frequency
+    # Train on a bounded recent window (see cap_fit_window): per-fit time/memory
+    # must not grow with the metric's lifetime, and recent history is what local
+    # models actually use.
+    s = cap_fit_window(reg.series)
     m = seasonal_period or autodetect_period(s)
     impute_warn = _impute_warn(reg.impute_frac)
 

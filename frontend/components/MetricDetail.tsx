@@ -128,12 +128,17 @@ export default function MetricDetail({
     let alive = true;
     void (async () => {
       try {
-        const h = await api.listMetricForecasts(metric.id);
+        // History and anomalies are independent — fetch them together rather
+        // than serializing anomalies behind the forecast lookup.
+        const [h, a] = await Promise.all([
+          api.listMetricForecasts(metric.id),
+          api.listMetricAnomalies(metric.id),
+        ]);
         if (!alive) return;
         setHistory(h);
+        setAnomalies(a);
         const latest = h.find((r) => r.status === "completed");
         if (latest) setRun(await api.getForecast(latest.id));
-        setAnomalies(await api.listMetricAnomalies(metric.id));
       } catch {
         /* first load best-effort */
       } finally {

@@ -15,10 +15,10 @@ export default function NotificationBell() {
     let alive = true;
     const load = async () => {
       try {
-        // A true COUNT(*), unlike listNotifications() which is page-limited
-        // and would silently undercount past its default limit.
-        const stats = await api.getDashboard();
-        if (alive) setUnread(stats.unread_notifications);
+        // A true COUNT(*) via a dedicated endpoint — accurate (unlike the
+        // page-limited list) and cheap (unlike the full /dashboard payload).
+        const { unread } = await api.unreadNotificationCount();
+        if (alive) setUnread(unread);
       } catch {
         /* api briefly unreachable — keep last value */
       }

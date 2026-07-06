@@ -35,12 +35,3 @@ export const rise: Variants = {
     },
   },
 };
-
-/** Simple opacity-only entrance, for content where a rise would be too busy. */
-export const fadeIn: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { duration: 0.2 },
-  },
-};
