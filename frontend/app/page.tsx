@@ -1,115 +1,260 @@
-import Link from "next/link";
+// Dashboard (home): the bento-grid overview (doc 4 §7b). Server component:
+// all data fetching happens here and is passed down as props; motion lives in
+// the "use client" tile components under components/dashboard/.
+
 import { api } from "@/lib/api";
-import type { NotificationItem } from "@/lib/types";
+import type {
+  Dashboard,
+  ForecastRun,
+  ForecastRunSummary,
+  MetricListItem,
+  NotificationItem,
+} from "@/lib/types";
+import { BentoGrid, BentoTile } from "@/components/dashboard/BentoGrid";
+import { FeaturedTile } from "@/components/dashboard/FeaturedTile";
+import { KpiTile } from "@/components/dashboard/KpiTile";
+import {
+  ForecastPreviewTile,
+  type ForecastPreviewData,
+  type ForecastPreviewRow,
+} from "@/components/dashboard/ForecastPreviewTile";
+import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import {
+  ChartLineUp,
+  Warning,
+  Robot,
+  Plugs,
+  Database,
+} from "@phosphor-icons/react/dist/ssr";
 
 export const dynamic = "force-dynamic";
 
-function Stat({
-  label,
-  value,
-  href,
-  alert,
-}: {
-  label: string;
-  value: number | string;
-  href?: string;
-  alert?: boolean;
-}) {
-  const body = (
-    <div
-      className={
-        "rounded-lg border bg-white p-5 " +
-        (alert ? "border-amber-300 bg-amber-50" : "border-slate-200") +
-        (href ? " transition hover:border-blue-400 hover:shadow-sm" : "")
+// Composes the forecast-preview tile's data from EXISTING api methods only:
+// listAllMetrics() -> listMetricForecasts() per metric to find the most
+// recently completed run, then getForecast() for its points and
+// getMetricData() for the actuals tail. Works even when no
+// forecast_completed notification exists (e.g. all read or pruned).
+async function loadForecastPreview(
+  metrics: MetricListItem[]
+): Promise<ForecastPreviewData | null> {
+  if (metrics.length === 0) return null;
+
+  const perMetric = await Promise.all(
+    metrics.map(async (m) => {
+      try {
+        const runs = await api.listMetricForecasts(m.id);
+        const completed = runs
+          .filter(
+            (r): r is ForecastRunSummary & { completed_at: string } =>
+              r.status === "completed" && r.completed_at !== null
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
+          );
+        return { metric: m, latest: completed[0] ?? null };
+      } catch {
+        return { metric: m, latest: null };
       }
-    >
-      <div className="text-3xl font-semibold tabular-nums">{value}</div>
-      <div className={"mt-1 text-xs " + (alert ? "text-amber-700" : "text-slate-500")}>{label}</div>
-    </div>
+    })
   );
-  return href ? <Link href={href}>{body}</Link> : body;
+
+  const candidates = perMetric.filter(
+    (
+      p
+    ): p is {
+      metric: MetricListItem;
+      latest: ForecastRunSummary & { completed_at: string };
+    } => p.latest !== null
+  );
+  if (candidates.length === 0) return null;
+
+  candidates.sort(
+    (a, b) =>
+      new Date(b.latest.completed_at).getTime() - new Date(a.latest.completed_at).getTime()
+  );
+  const best = candidates[0];
+
+  let forecast: ForecastRun;
+  try {
+    forecast = await api.getForecast(best.latest.id);
+  } catch {
+    return null;
+  }
+
+  let actualsPoints: { timestamp: string; value: number }[] = [];
+  try {
+    const data = await api.getMetricData(best.metric.id);
+    actualsPoints = data.points;
+  } catch {
+    // Preview degrades to forecast-only if the actuals fetch fails.
+  }
+
+  const rows: ForecastPreviewRow[] = [];
+  // Anchor the preview on the forecast window: actuals keep accruing after a
+  // run completes, so pairing the forecast with the newest actuals splits the
+  // chart into two distant clusters. Show the ~40 actuals leading up to the
+  // forecast start instead, then the forecast continuing from them.
+  const forecastStart = forecast.points.length
+    ? Math.min(...forecast.points.map((p) => new Date(p.timestamp).getTime()))
+    : Number.POSITIVE_INFINITY;
+  let tail = actualsPoints.filter(
+    (p) => new Date(p.timestamp).getTime() < forecastStart
+  );
+  if (tail.length === 0) tail = actualsPoints;
+  tail = tail.slice(-40);
+  for (const p of tail) {
+    rows.push({ t: new Date(p.timestamp).getTime(), actual: p.value });
+  }
+  for (const p of forecast.points) {
+    rows.push({
+      t: new Date(p.timestamp).getTime(),
+      predicted: p.predicted,
+      band: p.lower != null && p.upper != null ? [p.lower, p.upper] : undefined,
+    });
+  }
+  if (rows.length < 2) return null;
+  rows.sort((a, b) => a.t - b.t);
+
+  const nowBoundary =
+    tail.length > 0
+      ? new Date(tail[tail.length - 1].timestamp).getTime()
+      : undefined;
+
+  return {
+    metricId: best.metric.id,
+    metricName: best.metric.name,
+    modelLabel: `${best.latest.resolved_model ?? best.latest.model_type} forecast, next ${best.latest.horizon} points`,
+    rows,
+    nowBoundary,
+  };
 }
 
-function describe(n: NotificationItem): string {
-  const p = n.payload as Record<string, string | number>;
-  switch (n.type) {
-    case "forecast_completed":
-      return `Forecast completed for ${p.metric_name ?? "a metric"} (${p.model ?? "auto"})`;
-    case "anomaly_detected":
-      return `${p.count ?? "?"} anomal${Number(p.count) === 1 ? "y" : "ies"} on ${p.metric_name ?? "a metric"} (worst: ${p.worst_severity})`;
-    case "connector_error":
-      return `Connector "${p.connector_name}" disabled after repeated failures`;
-    case "agent_unreachable":
-      return `An agent stopped sending heartbeats`;
-    case "export_ready":
-      return `An export is ready to download`;
-    default:
-      return n.type;
-  }
+function ErrorTile({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-2xl border border-sage/20 bg-surface p-6 text-center shadow-tinted">
+      <Warning size={24} weight="regular" className="text-paprika-ink" />
+      <p className="text-sm text-ink/60">{message}</p>
+    </div>
+  );
 }
 
 export default async function DashboardPage() {
-  const [stats, notifications] = await Promise.all([
-    api.getDashboard(),
-    api.listNotifications(),
-  ]);
-  const recent = notifications.slice(0, 6);
+  let stats: Dashboard | null = null;
+  let notifications: NotificationItem[] = [];
+  let metrics: MetricListItem[] = [];
+
+  try {
+    [stats, notifications, metrics] = await Promise.all([
+      api.getDashboard(),
+      api.listNotifications(),
+      api.listAllMetrics(),
+    ]);
+  } catch {
+    stats = null;
+  }
+
+  const header = (
+    <div>
+      <h1 className="text-2xl font-semibold text-pine">Overview</h1>
+      <p className="mt-1 text-sm text-ink/60">
+        What your data has been doing while you were away.
+      </p>
+    </div>
+  );
+
+  if (!stats) {
+    return (
+      <div className="space-y-8">
+        {header}
+        <ErrorTile message="Could not load the dashboard right now. Check that the api service is running, then refresh." />
+      </div>
+    );
+  }
+
+  const forecastPreview = await loadForecastPreview(metrics).catch(() => null);
+  const featuredSparkline = metrics.find((m) => m.spark && m.spark.length >= 2)?.spark;
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Overview</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          What your data has been doing while you were away.
-        </p>
-      </div>
+      {header}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Connectors" value={stats.connectors} href="/connectors" />
-        <Stat label="Metrics tracked" value={stats.metrics} href="/metrics" />
-        <Stat label="Data points collected" value={stats.data_points.toLocaleString()} />
-        <Stat label="Points in the last 24h" value={stats.points_last_24h.toLocaleString()} />
-        <Stat label="Forecasts completed" value={stats.forecast_runs_completed} />
-        <Stat label="Active agents" value={stats.agents_active} href="/agents" />
-        <Stat
-          label="Open anomalies"
-          value={stats.open_anomalies}
-          alert={stats.open_anomalies > 0}
-        />
-        <Stat
-          label="Connectors in error"
-          value={stats.connectors_error}
-          href="/connectors"
-          alert={stats.connectors_error > 0}
-        />
-      </div>
+      <BentoGrid>
+        {/* Featured KPI: 4 cols x 2 rows, pine-teal dark surface */}
+        <BentoTile colSpan={4} rowSpan={2}>
+          <FeaturedTile
+            dataPoints={stats.data_points}
+            pointsLast24h={stats.points_last_24h}
+            sparklineValues={featuredSparkline}
+          />
+        </BentoTile>
 
-      <div className="rounded-lg border border-slate-200 bg-white">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <h2 className="font-medium">Recent activity</h2>
-          <Link href="/notifications" className="text-xs text-blue-700 hover:underline">
-            View all →
-          </Link>
-        </div>
-        {recent.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            Nothing yet — request a forecast or let the poller run for a minute.
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {recent.map((n) => (
-              <li key={n.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className={n.read_at ? "text-slate-500" : "font-medium"}>
-                  {describe(n)}
-                </span>
-                <span className="ml-4 shrink-0 text-xs text-slate-400">
-                  {new Date(n.created_at).toLocaleTimeString()}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        {/* Forecast preview: 5 cols x 2 rows, white */}
+        <BentoTile colSpan={5} rowSpan={2}>
+          <ForecastPreviewTile data={forecastPreview} />
+        </BentoTile>
+
+        {/* Open anomalies: 3 cols, paprika-tinted when > 0 */}
+        <BentoTile colSpan={3}>
+          <KpiTile
+            label="Open anomalies"
+            value={stats.open_anomalies}
+            href="/metrics"
+            icon={<Warning size={20} weight="regular" />}
+            tone={stats.open_anomalies > 0 ? "paprika" : "plain"}
+            subtext={stats.open_anomalies > 0 ? "Needs a look" : "All clear"}
+          />
+        </BentoTile>
+
+        {/* Active agents: 3 cols, white */}
+        <BentoTile colSpan={3}>
+          <KpiTile
+            label="Active agents"
+            value={stats.agents_active}
+            href="/agents"
+            icon={<Robot size={20} weight="regular" />}
+          />
+        </BentoTile>
+
+        {/* Connectors: 3 cols, sage-tinted, error badge when any errored */}
+        <BentoTile colSpan={3}>
+          <KpiTile
+            label="Connectors"
+            value={stats.connectors}
+            href="/connectors"
+            icon={<Plugs size={20} weight="regular" />}
+            tone="sage"
+            badge={
+              stats.connectors_error > 0 ? `${stats.connectors_error} in error` : undefined
+            }
+          />
+        </BentoTile>
+
+        {/* Forecasts completed: 3 cols, white */}
+        <BentoTile colSpan={3}>
+          <KpiTile
+            label="Forecasts completed"
+            value={stats.forecast_runs_completed}
+            href="/metrics"
+            icon={<ChartLineUp size={20} weight="regular" />}
+          />
+        </BentoTile>
+
+        {/* Recent activity: 6 cols, tall, white */}
+        <BentoTile colSpan={6} rowSpan={2}>
+          <ActivityFeed notifications={notifications} />
+        </BentoTile>
+
+        {/* Metrics tracked: 6 cols, white — closes the last row against the tall activity tile */}
+        <BentoTile colSpan={6}>
+          <KpiTile
+            label="Metrics tracked"
+            value={stats.metrics}
+            href="/metrics"
+            icon={<Database size={20} weight="regular" />}
+          />
+        </BentoTile>
+      </BentoGrid>
     </div>
   );
 }

@@ -245,12 +245,19 @@ def get_metric_data(
     limit: int = Query(1000, ge=1, le=10000),
 ) -> MetricDataOut:
     metric = _owned_metric(db, principal.org_id, metric_id)
-    rows = db.scalars(
-        select(DataPoint)
-        .where(DataPoint.metric_id == metric.id)
-        .order_by(DataPoint.timestamp)
-        .limit(limit)
-    ).all()
+    # Newest `limit` points, returned oldest→newest. ASC+limit would return the
+    # OLDEST window once a metric outgrows the limit, pairing ancient actuals
+    # with a fresh forecast in the UI (same pattern as worker._load_series).
+    rows = list(
+        reversed(
+            db.scalars(
+                select(DataPoint)
+                .where(DataPoint.metric_id == metric.id)
+                .order_by(DataPoint.timestamp.desc())
+                .limit(limit)
+            ).all()
+        )
+    )
     return MetricDataOut(
         metric_id=metric.id,
         points=[DataPointOut(timestamp=r.timestamp, value=r.value, source=r.source) for r in rows],

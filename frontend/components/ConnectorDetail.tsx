@@ -6,7 +6,26 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
+import { Plus, Trash } from "@phosphor-icons/react/dist/ssr";
 import { api } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { AgentOnboarding, PushOnboarding } from "@/components/AgentOnboarding";
 import type {
   AgentRegistration,
   Connector,
@@ -14,27 +33,11 @@ import type {
   Metric,
 } from "@/lib/types";
 
-function CopyBlock({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500">{label}</span>
-        <button
-          type="button"
-          className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50"
-          onClick={() => {
-            void navigator.clipboard.writeText(value);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? "Copied ✓" : "Copy"}
-        </button>
-      </div>
-      <pre className="max-h-64 overflow-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">{value}</pre>
-    </div>
-  );
+function statusBadge(status: string) {
+  if (status === "active") return <Badge variant="success">Active</Badge>;
+  if (status === "error") return <Badge variant="destructive">Error</Badge>;
+  if (status === "paused") return <Badge variant="outline">Paused</Badge>;
+  return <Badge variant="outline">{status}</Badge>;
 }
 
 export default function ConnectorDetail({
@@ -60,7 +63,9 @@ export default function ConnectorDetail({
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      toast.error("Action failed", { description: message });
     }
   };
 
@@ -109,185 +114,259 @@ export default function ConnectorDetail({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{connector.name}</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {connector.ingestion_method}
-            {connector.schedule_cron ? ` · cron ${connector.schedule_cron}` : ""} ·{" "}
-            <span
-              className={
-                connector.status === "active"
-                  ? "text-emerald-600"
-                  : connector.status === "error"
-                    ? "text-red-600"
-                    : "text-slate-500"
-              }
-            >
-              {connector.status}
-            </span>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold text-ink">{connector.name}</h1>
+            {statusBadge(connector.status)}
+          </div>
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-ink/60">
+            <Badge variant="secondary" className="capitalize">
+              {connector.ingestion_method}
+            </Badge>
+            {connector.schedule_cron && (
+              <span className="font-mono text-xs tabular-nums text-ink/50">
+                cron {connector.schedule_cron}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => void togglePause()}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
-          >
-            {connector.status === "paused" ? "Resume" : "Pause"}
-          </button>
-          <button
-            onClick={() => void remove()}
-            className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
-          >
-            Delete
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" onClick={() => void togglePause()}>
+                {connector.status === "paused" ? "Resume" : "Pause"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {connector.status === "paused"
+                ? "Resumes scheduled data collection"
+                : "Stops scheduled data collection until resumed"}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="destructive" onClick={() => void remove()}>
+                Delete
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Deletes this connector with all its metrics and collected data
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div className="rounded-lg bg-paprika/10 px-4 py-3 text-sm text-paprika-ink">
+          {error}
+        </div>
       )}
 
       {webhookUrl && (
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-5">
-          <h2 className="font-medium">Push setup</h2>
-          <p className="text-sm text-slate-500">
-            Point your source (e.g. Braze Currents → Custom HTTP Connector) at this URL. Payload:{" "}
-            <code className="rounded bg-slate-100 px-1">{"{metric_key, points: [{timestamp, value}]}"}</code>
-          </p>
-          <CopyBlock label="Webhook URL" value={webhookUrl} />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Push setup</CardTitle>
+            <CardDescription>
+              Your source sends data to this endpoint; nothing runs on your side.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PushOnboarding webhookUrl={webhookUrl} />
+          </CardContent>
+        </Card>
       )}
 
       {connector.ingestion_method === "agent" && (
-        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium">Agent setup</h2>
-            <button
-              onClick={() => void registerAgent()}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
-            >
-              Register new agent
-            </button>
-          </div>
-          {registration ? (
-            <>
-              <p className="text-sm text-amber-700">
-                Save these now — the token is shown exactly once.
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Agent setup</CardTitle>
+                <CardDescription className="mt-1.5">
+                  A collector you run beside your data; credentials never leave
+                  your infrastructure.
+                </CardDescription>
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" onClick={() => void registerAgent()}>
+                    Register new agent
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Generates a fresh compose file and one-time token for this connector
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {registration ? (
+              <AgentOnboarding registration={registration} />
+            ) : (
+              <p className="text-sm text-ink/60">
+                The agent runs on your infrastructure and holds your source
+                credentials; only numeric points reach this platform. See{" "}
+                <Link href="/agents" className="text-hunter hover:underline">
+                  Agents
+                </Link>{" "}
+                for health.
               </p>
-              <CopyBlock label="Ingestion token" value={registration.ingestion_token} />
-              <CopyBlock label="docker-compose.agent.yml" value={registration.compose_file} />
-            </>
-          ) : (
-            <p className="text-sm text-slate-500">
-              The agent runs on your infrastructure and holds your source credentials; only
-              numeric points reach this platform. See <Link href="/agents" className="text-blue-700 hover:underline">Agents</Link> for health.
-            </p>
-          )}
-        </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-5">
-        <h2 className="mb-3 font-medium">Metrics</h2>
-        {metrics.length > 0 && (
-          <table className="mb-4 w-full text-left text-sm">
-            <thead className="text-xs text-slate-500">
-              <tr>
-                <th className="py-2 font-medium">Name</th>
-                <th className="py-2 font-medium">Key</th>
-                <th className="py-2 font-medium">Seasonal period</th>
-                <th className="py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {metrics.map((m) => (
-                <tr key={m.id}>
-                  <td className="py-2">
-                    <Link href={`/metrics/${m.id}`} className="text-blue-700 hover:underline">
-                      {m.name}
-                    </Link>
-                  </td>
-                  <td className="py-2 font-mono text-xs">{m.key}</td>
-                  <td className="py-2">{m.seasonal_period ?? "auto"}</td>
-                  <td className="py-2 text-right">
-                    <button
-                      onClick={() => void removeMetric(m)}
-                      className="text-xs text-red-600 hover:underline"
-                    >
-                      Delete
-                    </button>
-                  </td>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Metrics</CardTitle>
+          <CardDescription>The series this connector collects.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {metrics.length > 0 ? (
+            <table className="mb-4 w-full text-left text-sm">
+              <thead className="text-xs text-pine">
+                <tr>
+                  <th className="py-2 font-medium">Name</th>
+                  <th className="py-2 font-medium">Key</th>
+                  <th className="py-2 font-medium">Seasonal period</th>
+                  <th className="py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
-          <label className="block text-sm">
-            <span className="text-xs text-slate-500">Metric key</span>
-            <input
-              value={metricKey}
-              onChange={(e) => setMetricKey(e.target.value)}
-              placeholder="signups_hourly"
-              className="mt-1 rounded-md border border-slate-300 px-3 py-1.5 font-mono text-sm"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-xs text-slate-500">Display name</span>
-            <input
-              value={metricName}
-              onChange={(e) => setMetricName(e.target.value)}
-              className="mt-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-xs text-slate-500">Seasonal period m</span>
-            <input
-              value={seasonal}
-              onChange={(e) => setSeasonal(e.target.value)}
-              placeholder="auto"
-              className="mt-1 w-24 rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-            />
-          </label>
-          <button
-            onClick={() => void addMetric()}
-            disabled={!metricKey}
-            className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            Add metric
-          </button>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white">
-        <h2 className="border-b border-slate-100 px-5 py-3 font-medium">Recent polls</h2>
-        {initialRuns.length === 0 ? (
-          <div className="p-6 text-center text-sm text-slate-500">
-            No poll history yet{connector.ingestion_method !== "pull" ? " (not a pull connector)" : ""}.
+              </thead>
+              <tbody className="divide-y divide-sage/15">
+                {metrics.map((m) => (
+                  <tr key={m.id}>
+                    <td className="py-2">
+                      <Link href={`/metrics/${m.id}`} className="text-hunter hover:underline">
+                        {m.name}
+                      </Link>
+                    </td>
+                    <td className="py-2 font-mono text-xs text-ink/70">{m.key}</td>
+                    <td className="py-2 font-mono text-xs tabular-nums text-ink/70">
+                      {m.seasonal_period ?? "auto"}
+                    </td>
+                    <td className="py-2 text-right">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-paprika-ink hover:bg-paprika/10"
+                            aria-label={`Delete metric ${m.name}`}
+                            onClick={() => void removeMetric(m)}
+                          >
+                            <Trash size={16} weight="regular" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Deletes this metric and its collected data
+                        </TooltipContent>
+                      </Tooltip>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="mb-4 text-sm text-ink/50">
+              No metrics yet. Add the first one below to start collecting.
+            </p>
+          )}
+          <div className="flex flex-wrap items-end gap-3 border-t border-sage/15 pt-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="detail-metric-key" className="text-xs">
+                Metric key
+              </Label>
+              <Input
+                id="detail-metric-key"
+                value={metricKey}
+                onChange={(e) => setMetricKey(e.target.value)}
+                placeholder="signups_hourly"
+                className="h-9 font-mono text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="detail-metric-name" className="text-xs">
+                Display name
+              </Label>
+              <Input
+                id="detail-metric-name"
+                value={metricName}
+                onChange={(e) => setMetricName(e.target.value)}
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="detail-metric-seasonal" className="text-xs">
+                Seasonal period m
+              </Label>
+              <Input
+                id="detail-metric-seasonal"
+                value={seasonal}
+                onChange={(e) => setSeasonal(e.target.value)}
+                placeholder="auto"
+                className="h-9 w-24 font-mono text-sm tabular-nums"
+              />
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  onClick={() => void addMetric()}
+                  disabled={!metricKey}
+                >
+                  <Plus size={16} weight="regular" />
+                  Add metric
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Adds a series this connector will start collecting
+              </TooltipContent>
+            </Tooltip>
           </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {initialRuns.map((r) => (
-              <li key={r.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
-                <span
-                  className={
-                    "h-2 w-2 shrink-0 rounded-full " +
-                    (r.status === "succeeded" ? "bg-emerald-500" : "bg-red-500")
-                  }
-                />
-                <span className="text-slate-600">
-                  {new Date(r.started_at).toLocaleString()}
-                </span>
-                <span className="text-xs text-slate-400">
-                  {r.status === "succeeded"
-                    ? `${r.records_ingested ?? 0} point(s)`
-                    : (r.error_message ?? "failed")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Recent polls</CardTitle>
+          <CardDescription>
+            Outcome of the latest scheduled runs for this connector.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {initialRuns.length === 0 ? (
+            <p className="py-4 text-center text-sm text-ink/50">
+              No poll history yet
+              {connector.ingestion_method !== "pull" ? " (not a pull connector)" : ""}.
+            </p>
+          ) : (
+            <ul className="divide-y divide-sage/15">
+              {initialRuns.map((r) => (
+                <li key={r.id} className="flex items-center gap-3 py-2.5 text-sm">
+                  {r.status === "succeeded" ? (
+                    <Badge variant="success">Succeeded</Badge>
+                  ) : (
+                    <Badge variant="destructive">Failed</Badge>
+                  )}
+                  <span className="font-mono text-xs tabular-nums text-ink/70">
+                    {new Date(r.started_at).toLocaleString()}
+                  </span>
+                  {r.status === "succeeded" ? (
+                    <span className="font-mono text-xs tabular-nums text-ink/50">
+                      {r.records_ingested ?? 0} point(s)
+                    </span>
+                  ) : (
+                    <span className="text-xs text-paprika-ink">
+                      {r.error_message ?? "failed"}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

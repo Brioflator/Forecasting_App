@@ -31,14 +31,22 @@ ATTEMPTS_KEY = "dispatch_attempts"
 NEXT_ATTEMPT_KEY = "next_attempt_at"
 
 
-def _load_series(session: Session, metric_id) -> list[Point]:
+def _load_series(session: Session, metric_id, max_points: int) -> list[Point]:
+    # Newest `max_points` only, returned oldest→newest. The history grows
+    # without bound; the payload to ml must not (ml trains on a bounded recent
+    # window anyway, and unbounded payloads were half of the ml OOM story).
     rows = session.scalars(
-        select(DataPoint).where(DataPoint.metric_id == metric_id).order_by(DataPoint.timestamp)
+        select(DataPoint)
+        .where(DataPoint.metric_id == metric_id)
+        .order_by(DataPoint.timestamp.desc())
+        .limit(max_points)
     ).all()
-    return [Point(timestamp=r.timestamp, value=r.value) for r in rows]
+    return [Point(timestamp=r.timestamp, value=r.value) for r in reversed(rows)]
 
 
-def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> None:
+def _process_run(
+    session: Session, run: ForecastRun, client: ForecastClient, settings: Settings
+) -> None:
     metric = session.get(Metric, run.metric_id)
     if metric is None:
         run.status = "failed"
@@ -46,7 +54,7 @@ def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> 
         run.completed_at = datetime.now(tz=UTC)
         return
 
-    series = _load_series(session, run.metric_id)
+    series = _load_series(session, run.metric_id, settings.forecast_max_series_points)
     request = ForecastRequest(
         series=series,
         horizon=run.horizon,
@@ -157,7 +165,7 @@ def dispatch_pending_forecasts(
         run.status = "running"
         session.flush()
         try:
-            _process_run(session, run, client)
+            _process_run(session, run, client, settings)
         except Exception as exc:  # noqa: BLE001 — transport-level failure
             session.rollback()  # discard any partial forecast_points
             _record_transport_failure(run, exc, settings)

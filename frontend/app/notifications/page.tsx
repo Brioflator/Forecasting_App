@@ -2,22 +2,45 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { toast } from "sonner";
+import {
+  Bell,
+  ChartLine,
+  Check,
+  Checks,
+  DownloadSimple,
+  Plugs,
+  Robot,
+  Warning,
+} from "@phosphor-icons/react/dist/ssr";
+import type { Icon } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
+import { staggerContainer, rise } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { NotificationItem } from "@/lib/types";
 
-const TYPE_LABEL: Record<string, { label: string; tone: string }> = {
-  forecast_completed: { label: "Forecast", tone: "bg-blue-50 text-blue-700" },
-  anomaly_detected: { label: "Anomaly", tone: "bg-red-50 text-red-700" },
-  connector_error: { label: "Connector", tone: "bg-amber-50 text-amber-700" },
-  agent_unreachable: { label: "Agent", tone: "bg-amber-50 text-amber-700" },
-  export_ready: { label: "Export", tone: "bg-emerald-50 text-emerald-700" },
+const TYPE_META: Record<string, { icon: Icon; alert: boolean }> = {
+  forecast_completed: { icon: ChartLine, alert: false },
+  anomaly_detected: { icon: Warning, alert: true },
+  connector_error: { icon: Plugs, alert: true },
+  agent_unreachable: { icon: Robot, alert: true },
+  export_ready: { icon: DownloadSimple, alert: false },
 };
 
 function describe(n: NotificationItem): string {
   const p = n.payload as Record<string, string | number>;
   switch (n.type) {
     case "forecast_completed":
-      return `Forecast completed for "${p.metric_name}" using ${p.model ?? "auto"}${p.warning ? ` — ${p.warning}` : ""}`;
+      return `Forecast completed for "${p.metric_name}" using ${p.model ?? "auto"}${p.warning ? ` (warning: ${p.warning})` : ""}`;
     case "anomaly_detected":
       return `${p.count} observation${Number(p.count) === 1 ? "" : "s"} on "${p.metric_name}" fell outside the forecast's confidence band (worst: ${p.worst_severity})`;
     case "connector_error":
@@ -38,10 +61,17 @@ function link(n: NotificationItem): string | null {
 }
 
 export default function NotificationsPage() {
+  const reduceMotion = useReducedMotion();
   const [items, setItems] = useState<NotificationItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setItems(await api.listNotifications());
+    try {
+      setError(null);
+      setItems(await api.listNotifications());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, []);
 
   useEffect(() => {
@@ -49,79 +79,170 @@ export default function NotificationsPage() {
   }, [load]);
 
   const markAll = async () => {
-    await api.markAllNotificationsRead();
-    void load();
+    try {
+      await api.markAllNotificationsRead();
+      void load();
+    } catch (e) {
+      toast.error("Could not mark all read", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
   };
 
   const markOne = async (id: string) => {
-    await api.markNotificationRead(id);
-    void load();
+    try {
+      await api.markNotificationRead(id);
+      void load();
+    } catch (e) {
+      toast.error("Could not mark read", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
   };
+
+  const hasUnread = (items ?? []).some((n) => !n.read_at);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Notifications</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold text-ink">Notifications</h1>
+          <p className="mt-1 text-sm text-ink/60">
             Forecast completions, anomalies, and operational alerts.
           </p>
         </div>
-        <button
-          onClick={() => void markAll()}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
-        >
-          Mark all read
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              onClick={() => void markAll()}
+              disabled={!hasUnread}
+            >
+              <Checks size={16} weight="regular" />
+              Mark all read
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Marks every notification as read</TooltipContent>
+        </Tooltip>
       </div>
 
-      {items === null ? (
-        <div className="p-8 text-center text-sm text-slate-400">Loading…</div>
-      ) : items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          All quiet. Notifications appear when forecasts finish, anomalies are
-          detected, or a connector/agent needs attention.
+      {error ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-paprika/10 px-4 py-3 text-sm text-paprika-ink">
+          <span>Could not load notifications: {error}</span>
+          <Button variant="outline" size="sm" onClick={() => void load()}>
+            Try again
+          </Button>
         </div>
+      ) : items === null ? (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full rounded-2xl" />
+        </div>
+      ) : items.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
+            <Bell size={32} weight="regular" className="text-sage" />
+            <div>
+              <p className="font-medium text-ink">All quiet</p>
+              <p className="mt-1 text-sm text-ink/60">
+                Notifications appear when forecasts finish, anomalies are
+                detected, or a connector or agent needs attention.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
-        <ul className="space-y-2">
+        <motion.ul
+          initial={reduceMotion ? false : "hidden"}
+          animate="visible"
+          variants={staggerContainer}
+          className="space-y-2"
+        >
           {items.map((n) => {
-            const meta = TYPE_LABEL[n.type] ?? { label: n.type, tone: "bg-slate-100 text-slate-600" };
+            const meta = TYPE_META[n.type] ?? { icon: Bell, alert: false };
+            const IconComponent = meta.icon;
             const href = link(n);
-            return (
-              <li
-                key={n.id}
-                className={
-                  "flex items-center gap-3 rounded-lg border bg-white px-4 py-3 text-sm " +
-                  (n.read_at ? "border-slate-100 text-slate-500" : "border-slate-200")
-                }
-              >
-                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs ${meta.tone}`}>
-                  {meta.label}
-                </span>
-                <span className="flex-1">
-                  {href ? (
-                    <Link href={href} className="hover:text-blue-700">
-                      {describe(n)}
-                    </Link>
-                  ) : (
-                    describe(n)
+            const unread = !n.read_at;
+            const body = (
+              <>
+                <span
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                    meta.alert ? "bg-paprika/10" : "bg-sage/20"
                   )}
+                >
+                  <IconComponent
+                    size={18}
+                    weight="regular"
+                    className={meta.alert ? "text-paprika-ink" : "text-hunter"}
+                  />
                 </span>
-                <span className="shrink-0 text-xs text-slate-400">
+                <span
+                  className={cn(
+                    "flex-1 text-sm",
+                    unread ? "font-medium text-ink" : "text-ink/60"
+                  )}
+                >
+                  {describe(n)}
+                </span>
+                <span className="shrink-0 font-mono text-xs tabular-nums text-ink/40">
                   {new Date(n.created_at).toLocaleString()}
                 </span>
-                {!n.read_at && (
-                  <button
-                    onClick={() => void markOne(n.id)}
-                    className="shrink-0 text-xs text-blue-700 hover:underline"
-                  >
-                    Mark read
-                  </button>
-                )}
-              </li>
+              </>
+            );
+            return (
+              <motion.li key={n.id} variants={rise}>
+                <div
+                  className={cn(
+                    "flex items-center gap-3 rounded-2xl border px-4 py-3 shadow-tinted",
+                    unread ? "border-sage/40 bg-surface" : "border-sage/15 bg-surface/60"
+                  )}
+                >
+                  {href ? (
+                    <Link
+                      href={href}
+                      onClick={() => {
+                        if (unread) void markOne(n.id);
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 hover:text-hunter"
+                    >
+                      {body}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (unread) void markOne(n.id);
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      {body}
+                    </button>
+                  )}
+                  {unread && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0"
+                          aria-label="Mark read"
+                          onClick={() => void markOne(n.id)}
+                        >
+                          <Check size={16} weight="regular" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Marks this notification as read
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </motion.li>
             );
           })}
-        </ul>
+        </motion.ul>
       )}
     </div>
   );

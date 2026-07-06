@@ -340,7 +340,8 @@
     ],
     "metrics": {
       "aic": 32.016897547045396,
-      "in_sample_mape": 0.20180448449420485
+      "in_sample_mape": 0.20180448449420485,
+      "train_points": 60.0
     },
     "warning": null
   }

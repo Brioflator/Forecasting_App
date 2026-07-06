@@ -46,6 +46,21 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+// For 204-No-Content endpoints: same error contract as req(), no body parse.
+// A bare fetch() resolves on 4xx/5xx, which made deletes look successful when
+// the backend refused them.
+async function reqVoid(path: string, init?: RequestInit): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`api ${res.status} ${path}: ${body}`);
+  }
+}
+
 export const api = {
   baseUrl: BASE,
   listConnectorDefinitions: () =>
@@ -96,13 +111,11 @@ export const api = {
   getConnector: (id: string) => req<Connector>(`/connectors/${id}`),
   updateConnector: (id: string, body: Record<string, unknown>) =>
     req<Connector>(`/connectors/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  deleteConnector: (id: string) =>
-    fetch(`${BASE}/connectors/${id}`, { method: "DELETE", headers: authHeaders() }),
+  deleteConnector: (id: string) => reqVoid(`/connectors/${id}`, { method: "DELETE" }),
   listConnectorRuns: (id: string) => req<ConnectorRunItem[]>(`/connectors/${id}/runs`),
   updateMetric: (id: string, body: Record<string, unknown>) =>
     req<Metric>(`/metrics/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  deleteMetric: (id: string) =>
-    fetch(`${BASE}/metrics/${id}`, { method: "DELETE", headers: authHeaders() }),
+  deleteMetric: (id: string) => reqVoid(`/metrics/${id}`, { method: "DELETE" }),
   listMetricForecasts: (id: string) =>
     req<ForecastRunSummary[]>(`/metrics/${id}/forecasts`),
   listMetricAnomalies: (id: string) => req<AnomalyItem[]>(`/metrics/${id}/anomalies`),

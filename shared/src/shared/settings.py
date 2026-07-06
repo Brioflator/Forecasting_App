@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # (doc 1 §7 "ml failures are HTTP errors the worker retries with backoff")
     forecast_dispatch_max_attempts: int = 5
     forecast_dispatch_backoff_seconds: float = 5
+    # cap on the series payload shipped to ml per forecast — the history grows
+    # forever, the training window doesn't (ml caps again at MAX_FIT_POINTS)
+    forecast_max_series_points: int = 5000
     # how often the worker re-syncs pull jobs against the connectors table, so
     # wizard-created connectors start polling without a restart
     connector_sync_interval_seconds: float = 30

@@ -238,6 +238,20 @@ Run these with plain pytest against the in-process functions — no container, n
 
 ---
 
+## 7b. Resource guards — why the service cannot be worked to death
+
+Added 2026-07-06 after a production incident: as a metric's history grew, single `auto_arima` fits crossed minutes and gigabytes; the worker's timeout+retry then stacked duplicate fits on the request threadpool (uvicorn keeps computing abandoned requests) until the process ran out of memory. The measured baseline on the incident series: **347s / ~2 GB per fit**, requested every 15 minutes with up to 5 retry duplicates.
+
+Per-fit work is now **bounded by construction**, plus the app sheds load:
+
+1. **Training window** (`MAX_FIT_POINTS = 512`): fitting uses the most recent 512 regularized grid points, so per-fit cost is independent of how long the metric has existed. The window used is reported as `metrics.train_points`. EDA obeys the same cap (robust STL is the same hazard).
+2. **SARIMA seasonal ceiling** (`SARIMA_MAX_M = 24`): SARIMA cost grows with the state-space dimension (~m), so large periods (weekly=168) go straight to the Holt-Winters rung, which handles long seasonality in O(n). An explicit `model="sarima"` request with a larger m substitutes down the ladder with a warning, per the §3 substitution contract.
+3. **Constrained stepwise search** (`max_p/q=3`, seasonal `P/Q≤1`, `maxiter=30`): the incident-series fit drops 347s → ~24s. Golden fixtures were unaffected (identical models chosen).
+4. **Fit-slot semaphore** (`MAX_CONCURRENT_FITS = 2`, 5s wait): a saturated service answers **503 + Retry-After** instead of queueing unbounded work. The worker already treats 5xx as a transport failure with exponential backoff, so load is shed, not stacked.
+5. **Worker side**: the series payload is capped (`forecast_max_series_points = 5000`, newest points) and the ml client timeout is 120s so a normal bounded fit is never abandoned mid-flight only to be re-requested.
+
+The regression suite is `services/ml/tests/test_resource_guards.py`. If a heavier tier ever needs longer windows or bigger searches, raise the constants together with the concurrency/timeout budget — never one without the other; the incident was exactly that mismatch.
+
 ## 8. Trade-offs & what to revisit
 
 - **`pmdarima` auto_arima over hand-rolled selection:** mature and robust, at the cost of a heavier dependency and less control over the exact search. Accepted — control isn't worth reimplementing edge-case handling. Revisit only if the dependency becomes unmaintained (watch this; it has had maintenance lulls) — `statsmodels` alone plus a small custom search is the fallback.

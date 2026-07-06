@@ -21,8 +21,12 @@ from ml.constants import (
     ABS_MIN,
     AUTO_ARIMA_MAX_P,
     AUTO_ARIMA_MAX_Q,
+    AUTO_ARIMA_MAX_SEASONAL,
+    AUTO_ARIMA_MAXITER,
     CANDIDATE_PERIODS,
     GAP_FILL_MAX_FRACTION,
+    MAX_FIT_POINTS,
+    SARIMA_MAX_M,
     SEASONALITY_ACF_THRESHOLD,
     TREND_MIN,
     seasonal_min,
@@ -149,6 +153,9 @@ def _sarima(
         m=m,
         max_p=AUTO_ARIMA_MAX_P,
         max_q=AUTO_ARIMA_MAX_Q,
+        max_P=AUTO_ARIMA_MAX_SEASONAL,
+        max_Q=AUTO_ARIMA_MAX_SEASONAL,
+        maxiter=AUTO_ARIMA_MAXITER,
         stepwise=True,
         suppress_warnings=True,
         error_action="ignore",
@@ -294,6 +301,8 @@ def _try_explicit(
     with a warning explaining the substitution (doc 3 §3) — never a hard error."""
     try:
         if model == "sarima":
+            if m and m > SARIMA_MAX_M:
+                raise ValueError(f"seasonal period {m} exceeds the SARIMA bound of {SARIMA_MAX_M}")
             if m and len(s) >= seasonal_min(m):
                 return _sarima(s, horizon, m, confidence, freq, warn=impute_warn)
             raise ValueError("series too short / no period for SARIMA")
@@ -332,10 +341,14 @@ def _auto_ladder(
     fall_warn: str | None = None
 
     if m and len(s) >= seasonal_min(m):
-        try:
-            return _sarima(s, horizon, m, confidence, freq, warn=impute_warn)
-        except Exception:  # noqa: BLE001 — in-family fallback (plan 05 §2.4)
-            fall_warn = "SARIMA fit failed; fell back"
+        # SARIMA cost grows with the state-space dimension (~m), so large
+        # periods (e.g. weekly=168) go straight to Holt-Winters, which handles
+        # long seasonality in O(n). This bounds the worst-case fit time.
+        if m <= SARIMA_MAX_M:
+            try:
+                return _sarima(s, horizon, m, confidence, freq, warn=impute_warn)
+            except Exception:  # noqa: BLE001 — in-family fallback (plan 05 §2.4)
+                fall_warn = "SARIMA fit failed; fell back"
         try:
             return _holt_winters(
                 s,
@@ -343,10 +356,15 @@ def _auto_ladder(
                 m,
                 confidence,
                 freq,
-                warn=_merge_warn(f"{fall_warn} to Holt-Winters", impute_warn),
+                warn=_merge_warn(
+                    f"{fall_warn} to Holt-Winters" if fall_warn else None,
+                    impute_warn,
+                ),
             )
         except Exception:  # noqa: BLE001
-            fall_warn = "seasonal fits failed; fell back"
+            fall_warn = (
+                "seasonal fits failed; fell back" if fall_warn else "seasonal fit failed; fell back"
+            )
 
     if len(s) >= TREND_MIN:
         try:
@@ -392,9 +410,17 @@ def forecast(
 
     reg = regularize(series)
     s, freq = reg.series, reg.frequency
+    # Train on a bounded recent window: per-fit time/memory must not grow with
+    # the metric's lifetime (unbounded fits are what used to OOM the service),
+    # and recent history is what local models actually use.
+    if len(s) > MAX_FIT_POINTS:
+        s = s.tail(MAX_FIT_POINTS)
     m = seasonal_period or autodetect_period(s)
     impute_warn = _impute_warn(reg.impute_frac)
 
     if model != "auto":
-        return _try_explicit(model, s, horizon, m, confidence, freq, impute_warn)
-    return _auto_ladder(s, horizon, m, confidence, freq, impute_warn)
+        result = _try_explicit(model, s, horizon, m, confidence, freq, impute_warn)
+    else:
+        result = _auto_ladder(s, horizon, m, confidence, freq, impute_warn)
+    result.metrics["train_points"] = float(len(s))
+    return result

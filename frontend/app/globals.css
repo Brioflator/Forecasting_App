@@ -2,16 +2,61 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Botanical theme (doc 4 §2b). Light theme only, locked - do not add a
+   `.dark` block or `dark:` variants. Shadcn semantic tokens are HSL triples
+   (no `hsl()` wrapper) so `hsl(var(--token))` in tailwind.config.ts works.
+   Named palette tokens (canvas, surface, dust, ink, pine, hunter, sage,
+   fern, paprika, paprika-ink) are wired directly as hex in tailwind.config.ts
+   and are the source of truth for the values below. */
 :root {
   color-scheme: light;
+  --radius: 0.5rem;
+
+  /* --canvas #F5F4F0 */
+  --background: 48 20% 95%;
+  /* --ink #24352B */
+  --foreground: 145 19% 17%;
+
+  /* --surface #FFFFFF */
+  --card: 0 0% 100%;
+  --card-foreground: 145 19% 17%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 145 19% 17%;
+
+  /* --primary hunter-green #3A5A40, foreground canvas #F5F4F0 */
+  --primary: 131 22% 29%;
+  --primary-foreground: 48 20% 95%;
+
+  /* secondary / muted: dust-grey family #DAD7CD */
+  --secondary: 46 15% 83%;
+  --secondary-foreground: 145 19% 17%;
+  --muted: 46 15% 88%;
+  /* --ink-soft pine-teal #344E41, used for secondary/muted text */
+  --muted-foreground: 150 20% 25%;
+
+  /* --sage #A3B18A tinted accent surface, ink text on it */
+  --accent: 82 20% 62%;
+  --accent-foreground: 145 19% 17%;
+
+  /* destructive family: paprika #E45918 fill, paprika-ink #A8420C text/foreground */
+  --destructive: 19 81% 49%;
+  --destructive-foreground: 48 20% 95%;
+
+  /* sage-tinted hairlines */
+  --border: 82 20% 85%;
+  --input: 82 20% 80%;
+  /* --ring hunter-green */
+  --ring: 131 22% 29%;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-canvas text-ink antialiased;
 }
 
-/* Minimal theme for the RJSF-generated wizard form (ADR-006: the bounded,
-   one-time styling cost of schema-driven forms). */
+/* Theme for the RJSF-generated wizard form (ADR-006: the bounded, one-time
+   styling cost of schema-driven forms), re-themed to the botanical palette.
+   ConnectorWizard depends on these class hooks; keep the selectors stable. */
 .rjsf-container fieldset {
   @apply border-0 p-0;
 }
@@ -23,21 +68,22 @@ body {
   @apply mb-4;
 }
 .rjsf-container label {
-  @apply block text-sm text-slate-600;
+  @apply block text-sm font-medium text-pine;
 }
 .rjsf-container input,
 .rjsf-container select,
 .rjsf-container textarea {
-  @apply mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm;
+  @apply mt-1 w-full rounded-lg border border-sage/40 bg-surface px-3 py-2 text-sm text-ink;
+  @apply focus:border-hunter focus:outline-none focus:ring-2 focus:ring-hunter/30;
 }
 .rjsf-container .field-description,
 .rjsf-container .help-block {
-  @apply mt-1 text-xs text-slate-400;
+  @apply mt-1 text-xs text-pine/70;
 }
 .rjsf-container .text-danger,
 .rjsf-container .error-detail {
-  @apply mt-1 list-none p-0 text-xs text-red-600;
+  @apply mt-1 list-none p-0 text-xs text-paprika-ink;
 }
 .rjsf-container .required {
-  @apply ml-0.5 text-red-500;
+  @apply ml-0.5 text-paprika-ink;
 }
