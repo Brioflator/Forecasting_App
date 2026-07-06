@@ -1,5 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import { Plant, Plus, List } from "@phosphor-icons/react/dist/ssr";
+
+import AppSidebar, { NavList } from "@/components/AppSidebar";
+import NotificationBell from "@/components/NotificationBell";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import { getSession } from "@/lib/auth";
 import "./globals.css";
 
@@ -15,38 +31,56 @@ export default function RootLayout({
 }) {
   const session = getSession();
   return (
-    <html lang="en">
-      <body>
-        <div className="min-h-screen">
-          <header className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-              <Link href="/" className="text-lg font-semibold">
-                Forecast Platform
-              </Link>
-              <nav className="flex items-center gap-4 text-sm">
-                <Link href="/connectors" className="text-slate-600 hover:text-slate-900">
-                  Connectors
-                </Link>
-                <Link href="/metrics" className="text-slate-600 hover:text-slate-900">
-                  Datasets
-                </Link>
-                <Link href="/agents" className="text-slate-600 hover:text-slate-900">
-                  Agents
-                </Link>
-                <Link
-                  href="/connectors/new"
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                >
-                  New connector
-                </Link>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
-                  {session.orgName}
-                </span>
-              </nav>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body className="font-sans">
+        <TooltipProvider delayDuration={300}>
+          <div className="flex min-h-screen bg-canvas">
+            <AppSidebar />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <header className="flex items-center justify-between gap-4 border-b border-sage/20 bg-surface px-6 py-4 lg:px-10">
+                <div className="flex items-center gap-3">
+                  <Sheet>
+                    <SheetTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="lg:hidden"
+                        aria-label="Open navigation"
+                      >
+                        <List size={20} weight="regular" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-64">
+                      <SheetHeader>
+                        <SheetTitle className="flex items-center gap-2">
+                          <Plant size={22} weight="regular" className="text-hunter" />
+                          Forecast
+                        </SheetTitle>
+                      </SheetHeader>
+                      <div className="mt-4">
+                        <NavList />
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                  <span className="rounded-full bg-sage/20 px-3 py-1 text-xs font-medium text-pine">
+                    {session.orgName}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button asChild size="sm">
+                    <Link href="/connectors/new">
+                      <Plus size={16} weight="regular" />
+                      New connector
+                    </Link>
+                  </Button>
+                  <NotificationBell />
+                </div>
+              </header>
+              <main className="max-w-none flex-1 px-6 py-8 lg:px-10">{children}</main>
             </div>
-          </header>
-          <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
-        </div>
+          </div>
+          <Toaster />
+        </TooltipProvider>
       </body>
     </html>
   );

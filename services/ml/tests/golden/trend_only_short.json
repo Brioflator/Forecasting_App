@@ -108,7 +108,8 @@
     ],
     "metrics": {
       "aic": 27.366693319021937,
-      "in_sample_mape": 0.015528377501248832
+      "in_sample_mape": 0.015528377501248832,
+      "train_points": 15.0
     },
     "warning": "not enough data for a seasonal model; used trend-only"
   }

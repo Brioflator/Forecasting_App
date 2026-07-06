@@ -10,16 +10,19 @@ from sqlalchemy.orm import selectinload
 
 from api.deps import DbDep, PrincipalDep
 from api.schemas import (
+    AnomalyOut,
     DataPointOut,
     ForecastCreate,
     ForecastRunOut,
+    ForecastRunSummaryOut,
     MetricCreate,
     MetricDataOut,
     MetricListItemOut,
     MetricOut,
+    MetricUpdate,
 )
 from api.serializers import run_to_out
-from shared.db.models import Connector, DataPoint, ForecastRun, Metric
+from shared.db.models import Anomaly, Connector, DataPoint, ForecastRun, Metric
 
 router = APIRouter(tags=["metrics"])
 
@@ -147,6 +150,93 @@ def get_metric(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> Metr
     return _metric_out(_owned_metric(db, principal.org_id, metric_id))
 
 
+@router.patch("/metrics/{metric_id}", response_model=MetricOut)
+def update_metric(
+    metric_id: uuid.UUID, body: MetricUpdate, db: DbDep, principal: PrincipalDep
+) -> MetricOut:
+    metric = _owned_metric(db, principal.org_id, metric_id)
+    if body.name is not None:
+        metric.name = body.name
+    if body.unit is not None:
+        metric.unit = body.unit
+    if body.seasonal_period is not None:
+        # 0 clears it back to auto-detect (PATCH can't send null distinguishably here)
+        metric.seasonal_period = body.seasonal_period or None
+    db.flush()
+    return _metric_out(metric)
+
+
+@router.delete("/metrics/{metric_id}", status_code=204)
+def delete_metric(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> None:
+    metric = _owned_metric(db, principal.org_id, metric_id)
+    db.delete(metric)  # data_points/forecast_runs/eda_reports cascade via FK
+
+
+@router.get("/metrics/{metric_id}/forecasts", response_model=list[ForecastRunSummaryOut])
+def list_metric_forecasts(
+    metric_id: uuid.UUID,
+    db: DbDep,
+    principal: PrincipalDep,
+    limit: int = Query(10, ge=1, le=50),
+) -> list[ForecastRunSummaryOut]:
+    """Forecast history, newest first — lets the UI reload the latest result."""
+    metric = _owned_metric(db, principal.org_id, metric_id)
+    runs = db.scalars(
+        select(ForecastRun)
+        .where(ForecastRun.metric_id == metric.id)
+        # id tiebreaker: rows created in one transaction share now()
+        .order_by(ForecastRun.requested_at.desc(), ForecastRun.id.desc())
+        .limit(limit)
+    ).all()
+    out = []
+    for run in runs:
+        params = run.model_params if isinstance(run.model_params, dict) else {}
+        out.append(
+            ForecastRunSummaryOut(
+                id=run.id,
+                metric_id=run.metric_id,
+                model_type=run.model_type,
+                resolved_model=params.get("resolved_model"),
+                horizon=run.horizon,
+                status=run.status,
+                requested_at=run.requested_at,
+                completed_at=run.completed_at,
+                warning=params.get("warning"),
+                error_message=run.error_message,
+            )
+        )
+    return out
+
+
+@router.get("/metrics/{metric_id}/anomalies", response_model=list[AnomalyOut])
+def list_metric_anomalies(
+    metric_id: uuid.UUID,
+    db: DbDep,
+    principal: PrincipalDep,
+    limit: int = Query(50, ge=1, le=200),
+) -> list[AnomalyOut]:
+    metric = _owned_metric(db, principal.org_id, metric_id)
+    rows = db.scalars(
+        select(Anomaly)
+        .where(Anomaly.metric_id == metric.id)
+        .order_by(Anomaly.detected_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        AnomalyOut(
+            id=a.id,
+            metric_id=a.metric_id,
+            detected_at=a.detected_at,
+            actual_value=a.actual_value,
+            expected_value=a.expected_value,
+            severity=a.severity,
+            method=a.method,
+            acknowledged_at=a.acknowledged_at,
+        )
+        for a in rows
+    ]
+
+
 @router.get("/metrics/{metric_id}/data", response_model=MetricDataOut)
 def get_metric_data(
     metric_id: uuid.UUID,
@@ -155,12 +245,19 @@ def get_metric_data(
     limit: int = Query(1000, ge=1, le=10000),
 ) -> MetricDataOut:
     metric = _owned_metric(db, principal.org_id, metric_id)
-    rows = db.scalars(
-        select(DataPoint)
-        .where(DataPoint.metric_id == metric.id)
-        .order_by(DataPoint.timestamp)
-        .limit(limit)
-    ).all()
+    # Newest `limit` points, returned oldest→newest. ASC+limit would return the
+    # OLDEST window once a metric outgrows the limit, pairing ancient actuals
+    # with a fresh forecast in the UI (same pattern as worker._load_series).
+    rows = list(
+        reversed(
+            db.scalars(
+                select(DataPoint)
+                .where(DataPoint.metric_id == metric.id)
+                .order_by(DataPoint.timestamp.desc())
+                .limit(limit)
+            ).all()
+        )
+    )
     return MetricDataOut(
         metric_id=metric.id,
         points=[DataPointOut(timestamp=r.timestamp, value=r.value, source=r.source) for r in rows],

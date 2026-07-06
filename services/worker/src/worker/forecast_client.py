@@ -30,7 +30,10 @@ class ForecastClient(Protocol):
 class HttpForecastClient:
     def __init__(self, base_url: str, client: httpx.Client | None = None):
         self._base_url = base_url.rstrip("/")
-        self._client = client or httpx.Client(timeout=60.0)
+        # Generous read timeout: a bounded fit takes tens of seconds (ml caps
+        # the training window and search space); timing out mid-fit only to
+        # retry the same fit is how work used to pile up on the ml service.
+        self._client = client or httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0))
 
     def forecast(self, request: ForecastRequest) -> dict[str, Any]:
         resp = self._client.post(f"{self._base_url}/forecast", json=request.model_dump(mode="json"))

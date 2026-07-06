@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { Database } from "@phosphor-icons/react/dist/ssr";
 import Sparkline from "@/components/Sparkline";
+import { Card } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -10,50 +13,69 @@ export default async function DatasetsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Datasets</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-2xl font-semibold text-pine">Datasets</h1>
+        <p className="mt-1 text-sm text-ink/60">
           Every metric being collected, with recent shape and freshness.
         </p>
       </div>
 
       {metrics.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          No metrics yet — create a connector first.
+        <div className="rounded-2xl border border-dashed border-sage/40 bg-surface p-10 text-center">
+          <Database size={28} weight="regular" className="mx-auto text-hunter" />
+          <p className="mt-3 text-sm text-ink/60">
+            No metrics yet.{" "}
+            <Link href="/connectors/new" className="font-medium text-hunter hover:underline">
+              Create a connector
+            </Link>{" "}
+            to start collecting data.
+          </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <Card className="overflow-hidden">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs text-slate-500">
+            <thead className="bg-muted/60 text-xs text-ink/60">
               <tr>
-                <th className="px-4 py-3 font-medium">Metric</th>
-                <th className="px-4 py-3 font-medium">Connector</th>
-                <th className="px-4 py-3 font-medium">Recent</th>
-                <th className="px-4 py-3 font-medium">Points</th>
-                <th className="px-4 py-3 font-medium">Last updated</th>
+                <th className="px-5 py-3 font-medium">Metric</th>
+                <th className="px-5 py-3 font-medium">Connector</th>
+                <th className="px-5 py-3 font-medium">Recent</th>
+                <th className="px-5 py-3 font-medium">Points</th>
+                <th className="px-5 py-3 font-medium">Last updated</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-sage/15">
               {metrics.map((m) => (
-                <tr key={m.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <Link href={`/metrics/${m.id}`} className="font-medium text-blue-700">
+                <tr key={m.id} className="transition-colors hover:bg-muted/40">
+                  <td className="px-5 py-3">
+                    <Link
+                      href={`/metrics/${m.id}`}
+                      className="font-medium text-hunter hover:underline"
+                    >
                       {m.name}
                     </Link>
-                    <span className="ml-2 text-xs text-slate-400">{m.key}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="ml-2 inline-block max-w-[10rem] truncate align-bottom font-mono text-xs text-ink/40">
+                          {m.key}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="font-mono">{m.key}</TooltipContent>
+                    </Tooltip>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{m.connector_name}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-3 text-ink/70">{m.connector_name}</td>
+                  <td className="px-5 py-3">
                     <Sparkline values={m.spark} />
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{m.n_points}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
+                  <td className="px-5 py-3 font-mono text-xs tabular-nums text-ink/70">
+                    {m.n_points}
+                  </td>
+                  <td className="px-5 py-3 font-mono text-xs tabular-nums text-ink/50">
                     {m.last_updated ? new Date(m.last_updated).toLocaleString() : "never"}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   );

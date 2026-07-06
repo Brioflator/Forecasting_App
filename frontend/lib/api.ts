@@ -4,13 +4,18 @@ import { authHeaders } from "./auth";
 import type {
   AgentInfo,
   AgentRegistration,
+  AnomalyItem,
   Connector,
   ConnectorDefinition,
+  ConnectorRunItem,
+  Dashboard,
   EdaReport,
   ForecastRun,
+  ForecastRunSummary,
   Metric,
   MetricData,
   MetricListItem,
+  NotificationItem,
   ShareLink,
 } from "./types";
 
@@ -39,6 +44,21 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`api ${res.status} ${path}: ${body}`);
   }
   return (await res.json()) as T;
+}
+
+// For 204-No-Content endpoints: same error contract as req(), no body parse.
+// A bare fetch() resolves on 4xx/5xx, which made deletes look successful when
+// the backend refused them.
+async function reqVoid(path: string, init?: RequestInit): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`api ${res.status} ${path}: ${body}`);
+  }
 }
 
 export const api = {
@@ -88,4 +108,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ connector_id: connectorId }),
     }),
+  getConnector: (id: string) => req<Connector>(`/connectors/${id}`),
+  updateConnector: (id: string, body: Record<string, unknown>) =>
+    req<Connector>(`/connectors/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteConnector: (id: string) => reqVoid(`/connectors/${id}`, { method: "DELETE" }),
+  listConnectorRuns: (id: string) => req<ConnectorRunItem[]>(`/connectors/${id}/runs`),
+  updateMetric: (id: string, body: Record<string, unknown>) =>
+    req<Metric>(`/metrics/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteMetric: (id: string) => reqVoid(`/metrics/${id}`, { method: "DELETE" }),
+  listMetricForecasts: (id: string) =>
+    req<ForecastRunSummary[]>(`/metrics/${id}/forecasts`),
+  listMetricAnomalies: (id: string) => req<AnomalyItem[]>(`/metrics/${id}/anomalies`),
+  listNotifications: (unreadOnly = false) =>
+    req<NotificationItem[]>(`/notifications?unread_only=${unreadOnly}`),
+  markNotificationRead: (id: string) =>
+    req<NotificationItem>(`/notifications/${id}/read`, { method: "POST" }),
+  markAllNotificationsRead: () =>
+    req<{ marked_read: number }>("/notifications/read-all", { method: "POST" }),
+  getDashboard: () => req<Dashboard>("/dashboard"),
 };

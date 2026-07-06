@@ -72,7 +72,9 @@ docker/           compose file + per-service Dockerfiles
 
 ## Status
 
-MVP scope (guide §9) complete, all local:
+Local product complete — MVP scope (guide §9) plus the product layer,
+everything short of production deployment (doc 2: Supabase + always-on host +
+Vercel, which is the next phase):
 
 - **Ingestion, three ways** — pull (scheduled poller with retry/backoff), push
   (`POST /webhooks/{token}`, e.g. Braze Currents), and the self-hosted
@@ -89,9 +91,21 @@ MVP scope (guide §9) complete, all local:
   consumer (throttled per metric).
 - **Auth + RLS** — dev JWTs when `MULTI_TENANT=true` (`POST /dev/token`);
   RLS policies live in migration 0005 with cross-org isolation tests.
-- **Ops** — structured JSON logs, connector-error + agent-stale notifications,
-  monthly partitioning on the high-volume tables (migration 0006) with
-  scheduled partition maintenance.
+- **Anomaly detection** — residual-threshold detector (guide §5.7): actuals
+  landing outside the latest forecast's confidence band become `anomalies`
+  rows with severity, surfaced on the metric page and as notifications.
+- **Notifications** — forecast completions, anomalies, connector errors, and
+  stale agents land in a notification center with an unread-count bell.
+- **Dashboard** — org-wide overview: connectors/metrics/points/forecast
+  counts, open anomalies, recent activity feed.
+- **Full management** — connector detail page (webhook URL, pause/resume,
+  delete with secret revocation, metric add/remove, poll audit history),
+  metric editing, forecast history that survives reloads, horizon/model
+  pickers.
+- **Ops** — structured JSON logs, retry/backoff on polls AND on worker→ml
+  dispatch (terminal failure at a cap), runtime connector-job sync, monthly
+  partitioning on the high-volume tables (migration 0006) with scheduled
+  maintenance.
 
 Next phase: production deployment per `02-deploy-production.md` (Supabase
-providers, always-on container host, Kafka/SQS) — gated on this MVP.
+providers, always-on container host, Kafka/SQS, Vercel) — gated on this build.

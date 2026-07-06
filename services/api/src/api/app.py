@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import agents, connectors, dev, eda, forecasts, ingestion, metrics
+from api import agents, connectors, dev, eda, forecasts, ingestion, metrics, notifications
 from api.definitions import load_connector_definitions
 from shared.db import session as session_mod
 from shared.logging_setup import configure_logging
@@ -62,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(ingestion.router)
     app.include_router(agents.router)
     app.include_router(eda.router)
+    app.include_router(notifications.router)
     app.include_router(dev.router)
     return app
 

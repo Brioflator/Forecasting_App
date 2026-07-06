@@ -145,3 +145,62 @@ class AgentRegisterOut(BaseModel):
     # Shown exactly once at registration (only the hash is stored, guide §5.2).
     ingestion_token: str
     compose_file: str
+
+
+class MetricUpdate(BaseModel):
+    name: str | None = None
+    unit: str | None = None
+    seasonal_period: int | None = None
+
+
+class NotificationOut(BaseModel):
+    id: uuid.UUID
+    type: str
+    payload: dict[str, Any]
+    read_at: datetime | None
+    created_at: datetime
+
+
+class AnomalyOut(BaseModel):
+    id: uuid.UUID
+    metric_id: uuid.UUID
+    detected_at: datetime
+    actual_value: float
+    expected_value: float | None
+    severity: str
+    method: str
+    acknowledged_at: datetime | None
+
+
+class ForecastRunSummaryOut(BaseModel):
+    id: uuid.UUID
+    metric_id: uuid.UUID
+    model_type: str
+    resolved_model: str | None
+    horizon: int
+    status: str
+    requested_at: datetime
+    completed_at: datetime | None
+    warning: str | None
+    error_message: str | None
+
+
+class ConnectorRunOut(BaseModel):
+    id: uuid.UUID
+    started_at: datetime
+    finished_at: datetime | None
+    status: str
+    records_ingested: int | None
+    error_message: str | None
+
+
+class DashboardOut(BaseModel):
+    connectors: int
+    connectors_error: int
+    metrics: int
+    data_points: int
+    points_last_24h: int
+    forecast_runs_completed: int
+    agents_active: int
+    unread_notifications: int
+    open_anomalies: int

@@ -123,3 +123,47 @@ def test_dispatch_marks_insufficient_data_failed(seeded, db_session: Session) ->
 
 def test_dispatch_noop_when_nothing_pending(seeded, db_session: Session) -> None:
     assert dispatch_pending_forecasts(db_session, _ml_client()) == 0
+
+
+class _RecordingClient:
+    """Captures the request the dispatcher builds; returns a minimal success."""
+
+    def __init__(self) -> None:
+        self.last_request: ForecastRequest | None = None
+
+    def forecast(self, request: ForecastRequest) -> dict:
+        self.last_request = request
+        return {
+            "model": "ets",
+            "model_params": {},
+            "frequency": "min",
+            "points": [],
+            "metrics": {},
+            "warning": None,
+        }
+
+
+def test_dispatch_caps_series_payload(seeded, db_session: Session) -> None:
+    """The dispatcher must not ship an unbounded, ever-growing history to ml —
+    that is what made per-fit cost grow without limit (the crash root cause).
+    Only the most recent forecast_max_series_points points are sent, in
+    chronological order."""
+    from shared.settings import Settings
+
+    _seed_series(db_session, seeded, 80)
+    _enqueue(db_session, seeded, horizon=3, model="ets")
+    db_session.commit()
+
+    client = _RecordingClient()
+    settings = Settings(_env_file=None, forecast_max_series_points=50)  # type: ignore[call-arg]
+    dispatch_pending_forecasts(db_session, client, settings=settings)
+
+    assert client.last_request is not None
+    sent = client.last_request.series
+    assert len(sent) == 50
+    # The newest points, oldest→newest.
+    timestamps = [p.timestamp for p in sent]
+    assert timestamps == sorted(timestamps)
+    base = datetime(2026, 7, 1, tzinfo=UTC)
+    assert timestamps[0] == base + timedelta(minutes=30)  # 80 - 50
+    assert timestamps[-1] == base + timedelta(minutes=79)

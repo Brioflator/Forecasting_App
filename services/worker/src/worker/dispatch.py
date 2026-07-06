@@ -20,7 +20,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from shared.db.models import DataPoint, ForecastPointRow, ForecastRun, Metric
+from shared.db.models import DataPoint, ForecastPointRow, ForecastRun, Metric, Notification
 from shared.models import ForecastRequest, Point
 from shared.settings import Settings, get_settings
 from worker.forecast_client import ForecastClient, ForecastFailed
@@ -31,14 +31,22 @@ ATTEMPTS_KEY = "dispatch_attempts"
 NEXT_ATTEMPT_KEY = "next_attempt_at"
 
 
-def _load_series(session: Session, metric_id) -> list[Point]:
+def _load_series(session: Session, metric_id, max_points: int) -> list[Point]:
+    # Newest `max_points` only, returned oldest→newest. The history grows
+    # without bound; the payload to ml must not (ml trains on a bounded recent
+    # window anyway, and unbounded payloads were half of the ml OOM story).
     rows = session.scalars(
-        select(DataPoint).where(DataPoint.metric_id == metric_id).order_by(DataPoint.timestamp)
+        select(DataPoint)
+        .where(DataPoint.metric_id == metric_id)
+        .order_by(DataPoint.timestamp.desc())
+        .limit(max_points)
     ).all()
-    return [Point(timestamp=r.timestamp, value=r.value) for r in rows]
+    return [Point(timestamp=r.timestamp, value=r.value) for r in reversed(rows)]
 
 
-def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> None:
+def _process_run(
+    session: Session, run: ForecastRun, client: ForecastClient, settings: Settings
+) -> None:
     metric = session.get(Metric, run.metric_id)
     if metric is None:
         run.status = "failed"
@@ -46,7 +54,7 @@ def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> 
         run.completed_at = datetime.now(tz=UTC)
         return
 
-    series = _load_series(session, run.metric_id)
+    series = _load_series(session, run.metric_id, settings.forecast_max_series_points)
     request = ForecastRequest(
         series=series,
         horizon=run.horizon,
@@ -82,6 +90,19 @@ def _process_run(session: Session, run: ForecastRun, client: ForecastClient) -> 
     }
     run.status = "completed"
     run.completed_at = datetime.now(tz=UTC)
+    session.add(
+        Notification(
+            organization_id=run.organization_id,
+            type="forecast_completed",
+            payload={
+                "forecast_run_id": str(run.id),
+                "metric_id": str(run.metric_id),
+                "metric_name": metric.name,
+                "model": result.get("model"),
+                "warning": result.get("warning"),
+            },
+        )
+    )
 
 
 def _record_transport_failure(run: ForecastRun, exc: Exception, settings: Settings) -> None:
@@ -144,7 +165,7 @@ def dispatch_pending_forecasts(
         run.status = "running"
         session.flush()
         try:
-            _process_run(session, run, client)
+            _process_run(session, run, client, settings)
         except Exception as exc:  # noqa: BLE001 — transport-level failure
             session.rollback()  # discard any partial forecast_points
             _record_transport_failure(run, exc, settings)

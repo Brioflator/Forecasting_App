@@ -115,3 +115,40 @@ def test_metric_data_empty_then_present(client: TestClient, db_session) -> None:
     data = client.get(f"/metrics/{mid}/data").json()
     assert len(data["points"]) == 3
     assert data["points"][0]["value"] == 0.0
+
+
+def test_metric_data_returns_newest_points_when_over_limit(client: TestClient, db_session) -> None:
+    """When a metric has more points than `limit`, the endpoint must return the
+    NEWEST window (oldest->newest), not the oldest window — otherwise a chart
+    pairs ancient actuals with a fresh forecast once history outgrows limit."""
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    from shared.constants import LOCAL_ORG_ID
+    from shared.db.models import DataPoint
+
+    cid = _create_connector(client)
+    mid = client.post(f"/connectors/{cid}/metrics", json={"name": "m", "key": "k"}).json()["id"]
+
+    base = datetime(2026, 7, 1, tzinfo=UTC)
+    total = 10
+    for i in range(total):
+        db_session.add(
+            DataPoint(
+                metric_id=uuid.UUID(mid),
+                organization_id=uuid.UUID(LOCAL_ORG_ID),
+                timestamp=base + timedelta(minutes=i),
+                value=float(i),
+                source="poll",
+            )
+        )
+    db_session.flush()
+
+    limit = 4
+    data = client.get(f"/metrics/{mid}/data?limit={limit}").json()
+    points = data["points"]
+    assert len(points) == limit
+    # Newest `limit` values: total-limit .. total-1, returned oldest->newest.
+    assert [p["value"] for p in points] == [6.0, 7.0, 8.0, 9.0]
+    timestamps = [p["timestamp"] for p in points]
+    assert timestamps == sorted(timestamps)
