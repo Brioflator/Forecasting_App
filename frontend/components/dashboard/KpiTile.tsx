@@ -6,39 +6,35 @@
 // calls for (§7b): plain white, paprika-tinted, or sage-tinted.
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
-import { animate, useReducedMotion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { CountUp } from "./CountUp";
 
-function CountUp({ value, className }: { value: number; className?: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const reduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    if (reduceMotion) {
-      node.textContent = value.toLocaleString();
-      return;
-    }
-    const controls = animate(0, value, {
-      duration: 0.8,
-      ease: "easeOut",
-      onUpdate: (latest) => {
-        node.textContent = Math.round(latest).toLocaleString();
-      },
-    });
-    return () => controls.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-
-  return (
-    <span ref={ref} className={cn("font-mono tabular-nums", className)}>
-      0
-    </span>
-  );
-}
+// Per-tone class sets (§7b): surface tint plus the text colors that go with it.
+// Only paprika (alert) shifts the text off the ink palette.
+const TONE = {
+  plain: {
+    surface: "bg-surface border border-sage/20",
+    icon: "text-hunter",
+    value: "text-ink",
+    label: "text-ink/60",
+    subtext: "text-ink/50",
+  },
+  paprika: {
+    surface: "bg-paprika/10",
+    icon: "text-paprika-ink",
+    value: "text-paprika-ink",
+    label: "text-paprika-ink/80",
+    subtext: "text-paprika-ink/70",
+  },
+  sage: {
+    surface: "bg-sage/20",
+    icon: "text-hunter",
+    value: "text-ink",
+    label: "text-ink/60",
+    subtext: "text-ink/50",
+  },
+} as const;
 
 export function KpiTile({
   label,
@@ -59,23 +55,18 @@ export function KpiTile({
   badge?: string;
   subtext?: string;
 }) {
-  const isAlertPaprika = tone === "paprika";
-  const isSage = tone === "sage";
+  const t = TONE[tone];
 
   const body = (
     <div
       className={cn(
         "flex h-full flex-col justify-between rounded-2xl p-5 shadow-tinted transition-all duration-200",
         "hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]",
-        isAlertPaprika && "bg-paprika/10",
-        isSage && "bg-sage/20",
-        !isAlertPaprika && !isSage && "bg-surface border border-sage/20"
+        t.surface
       )}
     >
       <div className="flex items-start justify-between">
-        {icon && (
-          <span className={cn(isAlertPaprika ? "text-paprika-ink" : "text-hunter")}>{icon}</span>
-        )}
+        {icon && <span className={t.icon}>{icon}</span>}
         {badge && (
           <Badge variant="destructive" className="ml-auto">
             {badge}
@@ -83,26 +74,9 @@ export function KpiTile({
         )}
       </div>
       <div>
-        <CountUp
-          value={value}
-          className={cn(
-            "block text-3xl font-semibold",
-            isAlertPaprika ? "text-paprika-ink" : "text-ink"
-          )}
-        />
-        <div
-          className={cn(
-            "mt-1 text-xs font-medium",
-            isAlertPaprika ? "text-paprika-ink/80" : "text-ink/60"
-          )}
-        >
-          {label}
-        </div>
-        {subtext && (
-          <div className={cn("mt-0.5 text-xs", isAlertPaprika ? "text-paprika-ink/70" : "text-ink/50")}>
-            {subtext}
-          </div>
-        )}
+        <CountUp value={value} className={cn("block text-3xl font-semibold", t.value)} />
+        <div className={cn("mt-1 text-xs font-medium", t.label)}>{label}</div>
+        {subtext && <div className={cn("mt-0.5 text-xs", t.subtext)}>{subtext}</div>}
       </div>
     </div>
   );

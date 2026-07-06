@@ -125,5 +125,6 @@ export const api = {
     req<NotificationItem>(`/notifications/${id}/read`, { method: "POST" }),
   markAllNotificationsRead: () =>
     req<{ marked_read: number }>("/notifications/read-all", { method: "POST" }),
+  unreadNotificationCount: () => req<{ unread: number }>("/notifications/unread-count"),
   getDashboard: () => req<Dashboard>("/dashboard"),
 };

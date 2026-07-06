@@ -67,6 +67,15 @@ def test_notifications_list_read_and_read_all(client: TestClient, db_session: Se
     assert client.get("/notifications?unread_only=true").json() == []
 
 
+def test_unread_count_endpoint(client: TestClient, db_session: Session) -> None:
+    assert client.get("/notifications/unread-count").json() == {"unread": 0}
+    _note(db_session)
+    n2 = _note(db_session, "anomaly_detected")
+    assert client.get("/notifications/unread-count").json() == {"unread": 2}
+    client.post(f"/notifications/{n2.id}/read")
+    assert client.get("/notifications/unread-count").json() == {"unread": 1}
+
+
 # ── dashboard ─────────────────────────────────────────────────────────────
 
 

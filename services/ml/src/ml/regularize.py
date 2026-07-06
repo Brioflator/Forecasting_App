@@ -11,8 +11,17 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from ml.constants import GAP_FILL_MAX_CONSECUTIVE
+from ml.constants import GAP_FILL_MAX_CONSECUTIVE, MAX_FIT_POINTS
 from shared.models import Point
+
+
+def cap_fit_window(series: pd.Series) -> pd.Series:
+    """Bound work to the most recent ``MAX_FIT_POINTS`` points — the load-bearing
+    guard that keeps per-request fit time/memory from growing with a metric's
+    lifetime (the OOM fix). A no-op on short series. Both the forecast ladder
+    and EDA route through this so the invariant can't drift between them."""
+    return series.tail(MAX_FIT_POINTS) if len(series) > MAX_FIT_POINTS else series
+
 
 # Canonical (seconds, pandas-offset-alias) rungs for frequency inference.
 # Modern pandas aliases (2.2+): 's' 'min' 'h' 'D' 'W' 'MS'.

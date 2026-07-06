@@ -90,36 +90,34 @@ async function loadForecastPreview(
     // Preview degrades to forecast-only if the actuals fetch fails.
   }
 
-  const rows: ForecastPreviewRow[] = [];
   // Anchor the preview on the forecast window: actuals keep accruing after a
   // run completes, so pairing the forecast with the newest actuals splits the
   // chart into two distant clusters. Show the ~40 actuals leading up to the
-  // forecast start instead, then the forecast continuing from them.
-  const forecastStart = forecast.points.length
-    ? Math.min(...forecast.points.map((p) => new Date(p.timestamp).getTime()))
+  // forecast start, then the forecast continuing from them. Each timestamp is
+  // parsed to epoch exactly once here.
+  const forecastRows: ForecastPreviewRow[] = forecast.points.map((p) => ({
+    t: new Date(p.timestamp).getTime(),
+    predicted: p.predicted,
+    band: p.lower != null && p.upper != null ? [p.lower, p.upper] : undefined,
+  }));
+  const forecastStart = forecastRows.length
+    ? Math.min(...forecastRows.map((r) => r.t))
     : Number.POSITIVE_INFINITY;
-  let tail = actualsPoints.filter(
-    (p) => new Date(p.timestamp).getTime() < forecastStart
-  );
-  if (tail.length === 0) tail = actualsPoints;
-  tail = tail.slice(-40);
-  for (const p of tail) {
-    rows.push({ t: new Date(p.timestamp).getTime(), actual: p.value });
-  }
-  for (const p of forecast.points) {
-    rows.push({
-      t: new Date(p.timestamp).getTime(),
-      predicted: p.predicted,
-      band: p.lower != null && p.upper != null ? [p.lower, p.upper] : undefined,
-    });
-  }
-  if (rows.length < 2) return null;
-  rows.sort((a, b) => a.t - b.t);
 
-  const nowBoundary =
-    tail.length > 0
-      ? new Date(tail[tail.length - 1].timestamp).getTime()
-      : undefined;
+  const actualRows: ForecastPreviewRow[] = actualsPoints.map((p) => ({
+    t: new Date(p.timestamp).getTime(),
+    actual: p.value,
+  }));
+  let tail = actualRows.filter((r) => r.t < forecastStart);
+  if (tail.length === 0) tail = actualRows;
+  tail = tail.slice(-40);
+
+  // Both segments are already chronological and tail precedes the forecast, so
+  // the concatenation is sorted without an extra pass.
+  const rows = [...tail, ...forecastRows];
+  if (rows.length < 2) return null;
+
+  const nowBoundary = tail.length > 0 ? tail[tail.length - 1].t : undefined;
 
   return {
     metricId: best.metric.id,

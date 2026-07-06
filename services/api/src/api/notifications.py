@@ -79,6 +79,22 @@ def mark_all_read(db: DbDep, principal: PrincipalDep) -> dict[str, int]:
     return {"marked_read": int(getattr(result, "rowcount", 0) or 0)}
 
 
+@router.get("/notifications/unread-count")
+def unread_count(db: DbDep, principal: PrincipalDep) -> dict[str, int]:
+    """A single COUNT(*) for the header bell — polled every 30s, so it must stay
+    cheap. Avoids the full /dashboard payload (8 aggregates, incl. an unbounded
+    DataPoint count) when all the bell needs is the unread total."""
+    n = db.scalar(
+        select(func.count())
+        .select_from(Notification)
+        .where(
+            Notification.organization_id == uuid.UUID(principal.org_id),
+            Notification.read_at.is_(None),
+        )
+    )
+    return {"unread": int(n or 0)}
+
+
 @router.get("/dashboard", response_model=DashboardOut)
 def dashboard(db: DbDep, principal: PrincipalDep) -> DashboardOut:
     org_id = uuid.UUID(principal.org_id)

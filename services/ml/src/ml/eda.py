@@ -10,9 +10,9 @@ from typing import Any
 
 import numpy as np
 
-from ml.constants import MAX_FIT_POINTS, SEASONALITY_MODERATE, SEASONALITY_STRONG
+from ml.constants import SEASONALITY_MODERATE, SEASONALITY_STRONG
 from ml.forecasting import autodetect_period
-from ml.regularize import regularize
+from ml.regularize import cap_fit_window, regularize
 from shared.models import Point
 
 
@@ -92,7 +92,7 @@ def eda(series: list[Point], seasonal_period: int | None = None) -> dict[str, An
     reg = regularize(series)
     # Same bounded-window rule as forecasting (robust STL on an unbounded grid
     # is another way to sink the process); the report reflects recent behavior.
-    s = reg.series.tail(MAX_FIT_POINTS) if len(reg.series) > MAX_FIT_POINTS else reg.series
+    s = cap_fit_window(reg.series)
     values = s.to_numpy(dtype="float64")
     m = seasonal_period or autodetect_period(s)
     return {
