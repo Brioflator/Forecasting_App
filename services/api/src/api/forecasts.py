@@ -9,35 +9,24 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from api.deps import BlobDep, DbDep, PrincipalDep
+from api.deps import BlobDep, DbDep, OwnedRunDep, PrincipalDep
 from api.export import CONTENT_TYPES, create_export
 from api.schemas import ForecastRunOut
 from api.serializers import run_to_out
-from shared.db.models import ExportJob, ForecastRun
+from shared.db.models import ExportJob
+from shared.domain import RunStatus
 
 router = APIRouter(tags=["forecasts"])
 
 
-def _owned_run(db: DbDep, org_id: str, forecast_id: uuid.UUID) -> ForecastRun:
-    run = db.scalar(
-        select(ForecastRun).where(
-            ForecastRun.id == forecast_id,
-            ForecastRun.organization_id == uuid.UUID(org_id),
-        )
-    )
-    if run is None:
-        raise HTTPException(404, "forecast not found")
-    return run
-
-
 @router.get("/forecasts/{forecast_id}", response_model=ForecastRunOut)
-def get_forecast(forecast_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> ForecastRunOut:
-    return run_to_out(_owned_run(db, principal.org_id, forecast_id))
+def get_forecast(run: OwnedRunDep) -> ForecastRunOut:
+    return run_to_out(run)
 
 
 @router.get("/forecasts/{forecast_id}/export")
 def export_forecast(
-    forecast_id: uuid.UUID,
+    run: OwnedRunDep,
     db: DbDep,
     principal: PrincipalDep,
     blob_store: BlobDep,
@@ -47,8 +36,7 @@ def export_forecast(
     share link exists for every export (guide §6.2)."""
     if format not in CONTENT_TYPES:
         raise HTTPException(422, "format must be csv|json|xlsx")
-    run = _owned_run(db, principal.org_id, forecast_id)
-    if run.status != "completed":
+    if run.status != RunStatus.COMPLETED:
         raise HTTPException(409, f"forecast is not completed (status={run.status})")
     _, payload = create_export(db, blob_store, run, format, uuid.UUID(principal.user_id))
     filename = f"forecast_{run.id}.{format}"
@@ -61,7 +49,7 @@ def export_forecast(
 
 @router.post("/forecasts/{forecast_id}/share")
 def share_forecast(
-    forecast_id: uuid.UUID,
+    run: OwnedRunDep,
     db: DbDep,
     principal: PrincipalDep,
     blob_store: BlobDep,
@@ -70,8 +58,7 @@ def share_forecast(
     """Create a shareable expiring link (export_jobs.share_token, guide §6.2)."""
     if format not in CONTENT_TYPES:
         raise HTTPException(422, "format must be csv|json|xlsx")
-    run = _owned_run(db, principal.org_id, forecast_id)
-    if run.status != "completed":
+    if run.status != RunStatus.COMPLETED:
         raise HTTPException(409, f"forecast is not completed (status={run.status})")
     job, _ = create_export(db, blob_store, run, format, uuid.UUID(principal.user_id))
     assert job.share_token is not None and job.expires_at is not None

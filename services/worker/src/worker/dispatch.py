@@ -88,6 +88,16 @@ def _process_run(
         "warning": result.get("warning"),
         "resolved_model": result.get("model"),
     }
+    # Trust surfacing (guide §4 step 6): the flag + backtest payload get their
+    # own columns (migration 0008); .get(...) keeps an older ml compatible.
+    run.low_confidence = bool(result.get("low_confidence", False))
+    run.backtest = {
+        "route": result.get("route"),
+        "candidates": result.get("candidates"),
+        "confidence_reasons": result.get("confidence_reasons", []),
+        "series_profile": result.get("series_profile"),
+        "fit_config": result.get("fit_config"),
+    }
     run.status = "completed"
     run.completed_at = datetime.now(tz=UTC)
     session.add(
@@ -100,6 +110,7 @@ def _process_run(
                 "metric_name": metric.name,
                 "model": result.get("model"),
                 "warning": result.get("warning"),
+                "low_confidence": bool(result.get("low_confidence", False)),
             },
         )
     )

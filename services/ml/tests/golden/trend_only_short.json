@@ -68,49 +68,122 @@
     "confidence": 0.95
   },
   "expected": {
-    "model": "ets",
-    "model_params": {
-      "trend": "add",
-      "seasonal": null
-    },
+    "model": "auto_ets",
+    "model_params": {},
     "frequency": "min",
     "points": [
       {
         "timestamp": "2026-01-01T00:15:00+00:00",
-        "predicted": 119.73550819518472,
-        "lower": 115.87953781371534,
-        "upper": 123.5914785766541
+        "predicted": 115.762145971484,
+        "lower": 106.5234088818365,
+        "upper": 125.0008830611315
       },
       {
         "timestamp": "2026-01-01T00:16:00+00:00",
-        "predicted": 123.65676231766014,
-        "lower": 118.20359670807719,
-        "upper": 129.1099279272431
+        "predicted": 115.762145971484,
+        "lower": 102.69183806406839,
+        "upper": 128.83245387889963
       },
       {
         "timestamp": "2026-01-01T00:17:00+00:00",
-        "predicted": 127.57801644013554,
-        "lower": 120.89927982694984,
-        "upper": 134.25675305332126
+        "predicted": 115.762145971484,
+        "lower": 99.74798556248257,
+        "upper": 131.77630638048544
       },
       {
         "timestamp": "2026-01-01T00:18:00+00:00",
-        "predicted": 131.49927056261095,
-        "lower": 123.7873297996722,
-        "upper": 139.2112113255497
+        "predicted": 115.762145971484,
+        "lower": 97.26307430992452,
+        "upper": 134.2612176330435
       },
       {
         "timestamp": "2026-01-01T00:19:00+00:00",
-        "predicted": 135.42052468508638,
-        "lower": 126.79831279289505,
-        "upper": 144.0427365772777
+        "predicted": 115.762145971484,
+        "lower": 95.07108170975359,
+        "upper": 136.45321023321443
       }
     ],
     "metrics": {
-      "aic": 27.366693319021937,
-      "in_sample_mape": 0.015528377501248832,
+      "cv_mase": 3.7635370293225425,
+      "cv_smape": 0.10069255997404203,
+      "cv_rmse": 11.508824543178807,
       "train_points": 15.0
     },
-    "warning": "not enough data for a seasonal model; used trend-only"
+    "warning": "2 extreme value(s) capped before fitting",
+    "route": "non_seasonal",
+    "low_confidence": true,
+    "confidence_reasons": [
+      "baseline_not_beaten",
+      "high_error"
+    ],
+    "candidates": [
+      {
+        "model": "auto_ets",
+        "mean_mase": 3.7635370293225425,
+        "mean_smape": 0.10069255997404203,
+        "mean_rmse": 11.508824543178807,
+        "folds": [
+          {
+            "fold": 0,
+            "cutoff": "2026-01-01T00:11:00+00:00",
+            "mase": 3.7635370293225425,
+            "smape": 0.10069255997404203,
+            "rmse": 11.508824543178807
+          }
+        ]
+      },
+      {
+        "model": "auto_theta",
+        "mean_mase": 4.512339615542269,
+        "mean_smape": 0.12212379798017421,
+        "mean_rmse": 13.803734939409681,
+        "folds": [
+          {
+            "fold": 0,
+            "cutoff": "2026-01-01T00:11:00+00:00",
+            "mase": 4.512339615542269,
+            "smape": 0.12212379798017421,
+            "rmse": 13.803734939409681
+          }
+        ]
+      },
+      {
+        "model": "naive",
+        "mean_mase": 3.763399425016501,
+        "mean_smape": 0.10068866433836086,
+        "mean_rmse": 11.508459101926741,
+        "folds": [
+          {
+            "fold": 0,
+            "cutoff": "2026-01-01T00:11:00+00:00",
+            "mase": 3.763399425016501,
+            "smape": 0.10068866433836086,
+            "rmse": 11.508459101926741
+          }
+        ]
+      }
+    ],
+    "series_profile": {
+      "n": 15,
+      "frequency": "min",
+      "impute_frac": 0.0,
+      "pct_zeros": 0.0,
+      "is_intermittent": false,
+      "seasonal_period": null,
+      "seasonal_strength": 0.0,
+      "variance": 40.95199347456321,
+      "n_outliers_winsorized": 2,
+      "is_constant": false
+    },
+    "fit_config": {
+      "engine": "statsforecast",
+      "engine_version": "2.0.3",
+      "model": "auto_ets",
+      "m": null,
+      "confidence": 0.95,
+      "frequency": "min",
+      "train_points": 15,
+      "params": {}
+    }
   }
 }

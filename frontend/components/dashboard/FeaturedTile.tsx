@@ -2,13 +2,15 @@
 
 // Featured KPI tile (doc 4 §7b): pine-teal dark surface, light text, the
 // count-up "data points collected" number, the 24h delta, and a small
-// sparkline when data is available. This is the one tile that breaks the
-// white-on-white monotony along with the sage-tinted connectors tile.
+// sparkline when data is available. A sage fern frond (BotanicalArt) grows in
+// along the right edge on load and sways gently, the one piece of Matisse
+// greenery on the page's one dark surface.
 
 import Link from "next/link";
 import { ChartLineUp } from "@phosphor-icons/react";
 import Sparkline from "@/components/Sparkline";
 import { CountUp } from "./CountUp";
+import { FernFrond } from "./BotanicalArt";
 
 export function FeaturedTile({
   dataPoints,
@@ -20,17 +22,22 @@ export function FeaturedTile({
   sparklineValues?: number[];
 }) {
   return (
-    <Link href="/metrics" className="block h-full">
-      <div
-        className="flex h-full min-h-[240px] flex-col justify-between rounded-2xl bg-pine p-6 shadow-tinted-lg transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]"
-      >
-        <div className="flex items-start justify-between">
+    <Link href="/metrics" className="group block h-full">
+      <div className="relative flex h-full min-h-[240px] flex-col justify-between overflow-hidden rounded-2xl bg-pine p-6 shadow-tinted-lg transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]">
+        {/* Soft dawn light in the top-left corner of the dark surface. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-16 -top-16 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(163,177,138,0.28),transparent_70%)]"
+        />
+        <FernFrond className="pointer-events-none absolute -right-3 bottom-0 h-[115%] text-sage opacity-60 transition-opacity duration-500 group-hover:opacity-80" />
+
+        <div className="relative flex items-start justify-between">
           <ChartLineUp size={22} weight="regular" className="text-dust" />
           {sparklineValues && sparklineValues.length >= 2 && (
             <Sparkline values={sparklineValues} width={100} height={28} className="text-sage" />
           )}
         </div>
-        <div>
+        <div className="relative">
           <CountUp
             value={dataPoints}
             duration={1}

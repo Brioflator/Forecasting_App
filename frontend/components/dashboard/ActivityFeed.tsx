@@ -2,12 +2,16 @@
 
 // Recent activity bento tile (doc 4 §7b): tall white tile, top-6
 // notifications, unread rows carry stronger weight, "View all" link.
-// The describe() mapping mirrors the logic previously inline in
-// app/page.tsx (kept as the reference implementation per the brief).
+// Rows cascade in (they inherit the visible state from the BentoGrid
+// stagger container, then stagger again among themselves); the empty state
+// grows an ASCII sprout instead of a bare sentence.
 
 import Link from "next/link";
+import { motion } from "motion/react";
 import { ArrowRight } from "@phosphor-icons/react";
 import type { NotificationItem } from "@/lib/types";
+import { staggerContainer, rise } from "@/lib/motion";
+import { AsciiArt, ASCII_SPROUT } from "./BotanicalArt";
 
 function describe(n: NotificationItem): string {
   const p = n.payload as Record<string, string | number>;
@@ -31,24 +35,39 @@ export function ActivityFeed({ notifications }: { notifications: NotificationIte
   const recent = notifications.slice(0, 6);
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-sage/20 bg-surface shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]">
+    <div className="flex h-full flex-col rounded-2xl border border-sage/20 bg-surface shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg">
       <div className="flex items-center justify-between border-b border-sage/20 px-5 py-4">
         <h2 className="text-sm font-semibold text-pine">Recent activity</h2>
         <Link
           href="/notifications"
-          className="inline-flex items-center gap-1 text-xs font-medium text-hunter hover:underline"
+          className="group inline-flex items-center gap-1 text-xs font-medium text-hunter hover:underline"
         >
-          View all <ArrowRight size={12} weight="regular" />
+          View all{" "}
+          <ArrowRight
+            size={12}
+            weight="regular"
+            className="transition-transform duration-200 group-hover:translate-x-0.5"
+          />
         </Link>
       </div>
       {recent.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-ink/50">
-          Nothing yet. Request a forecast or let the poller run for a minute.
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <AsciiArt
+            art={ASCII_SPROUT}
+            className="text-[11px] leading-[13px] text-sage"
+          />
+          <p className="text-sm text-ink/50">
+            Nothing yet. Request a forecast or let the poller run for a minute.
+          </p>
         </div>
       ) : (
-        <ul className="flex-1 divide-y divide-sage/10">
+        <motion.ul variants={staggerContainer} className="flex-1 divide-y divide-sage/10">
           {recent.map((n) => (
-            <li key={n.id} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
+            <motion.li
+              key={n.id}
+              variants={rise}
+              className="flex items-center justify-between gap-4 px-5 py-3 text-sm transition-colors duration-200 hover:bg-sage/5"
+            >
               <span className={n.read_at ? "text-ink/60" : "font-semibold text-ink"}>
                 {describe(n)}
               </span>
@@ -58,9 +77,9 @@ export function ActivityFeed({ notifications }: { notifications: NotificationIte
                   minute: "2-digit",
                 })}
               </span>
-            </li>
+            </motion.li>
           ))}
-        </ul>
+        </motion.ul>
       )}
     </div>
   );

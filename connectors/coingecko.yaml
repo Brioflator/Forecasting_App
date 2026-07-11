@@ -1,0 +1,25 @@
+# CoinGecko connector (doc 1 §4.1): a free, no-auth public API whose value
+# changes on every call. Pull-only; the generic_rest extractor covers it. Live
+# polls read the current spot price; the timestamp is stamped at poll time.
+key: coingecko
+name: CoinGecko (crypto price)
+description: >-
+  Track a cryptocurrency's spot price in USD from CoinGecko's free public API
+  (no key required). Defaults to Bitcoin; change the coin id or currency in the
+  URL to track anything CoinGecko lists.
+supports_pull: true
+supports_push: false
+supports_agent: false
+config_schema:
+  type: object
+  required: [base_url, value_path]
+  properties:
+    base_url:
+      type: string
+      title: "API URL"
+      format: uri
+      default: "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    value_path:
+      type: string
+      title: "JSONPath to the price"
+      default: "$.bitcoin.usd"

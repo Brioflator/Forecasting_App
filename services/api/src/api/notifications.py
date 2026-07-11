@@ -20,6 +20,7 @@ from shared.db.models import (
     Metric,
     Notification,
 )
+from shared.domain import AgentStatus, ConnectorStatus, RunStatus
 
 router = APIRouter(tags=["notifications"])
 
@@ -110,7 +111,7 @@ def dashboard(db: DbDep, principal: PrincipalDep) -> DashboardOut:
         connectors_error=count(
             select(func.count())
             .select_from(Connector)
-            .where(Connector.organization_id == org_id, Connector.status == "error")
+            .where(Connector.organization_id == org_id, Connector.status == ConnectorStatus.ERROR)
         ),
         metrics=count(
             select(func.count()).select_from(Metric).where(Metric.organization_id == org_id)
@@ -126,12 +127,12 @@ def dashboard(db: DbDep, principal: PrincipalDep) -> DashboardOut:
         forecast_runs_completed=count(
             select(func.count())
             .select_from(ForecastRun)
-            .where(ForecastRun.organization_id == org_id, ForecastRun.status == "completed")
+            .where(ForecastRun.organization_id == org_id, ForecastRun.status == RunStatus.COMPLETED)
         ),
         agents_active=count(
             select(func.count())
             .select_from(Agent)
-            .where(Agent.organization_id == org_id, Agent.status == "active")
+            .where(Agent.organization_id == org_id, Agent.status == AgentStatus.ACTIVE)
         ),
         unread_notifications=count(
             select(func.count())

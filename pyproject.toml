@@ -45,7 +45,7 @@ warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
 module = [
-    "pmdarima.*",
+    "statsforecast.*",
     "statsmodels.*",
     "scipy.*",
     "jsonpath_ng.*",

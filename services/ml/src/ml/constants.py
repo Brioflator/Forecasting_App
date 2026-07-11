@@ -32,16 +32,31 @@ AUTO_ARIMA_MAX_Q = 3
 AUTO_ARIMA_MAX_SEASONAL = 1  # max P and Q for the seasonal component
 AUTO_ARIMA_MAXITER = 30  # per-candidate optimizer iterations
 
+# ── Preprocessing / validation gate (guide §2.6, §4 step 2) ───────────────
+INTERMITTENT_ZERO_FRAC = 0.3  # fraction of zeros at/above which a series is intermittent
+OUTLIER_MAD_Z = 5.0  # robust z beyond which a value is winsorized (capped, never dropped)
+OUTLIER_MIN_POINTS = 10  # below this, too little signal to call anything an outlier
+HORIZON_MAX_FACTOR = 3  # reject-with-reason when horizon > factor × history length
+
+# ── Backtesting & selection (guide §4 steps 3–4) ──────────────────────────
+CV_MAX_FOLDS = 3  # rolling-origin folds; more is noise-chasing on ≤512 points
+SELECTION_MARGIN = 0.05  # candidate must beat the robust default by 5% mean MASE
+LOW_CONFIDENCE_MASE = 1.0  # chosen model no better than naive across folds
+MAX_CANDIDATES = 4  # per-route candidate cap (incl. baseline) — bounds CV work
+SF_SEASON_MAX_M = 52  # statsforecast AutoARIMA seasonal cap (cheaper than pmdarima was)
+TSB_ALPHA_D = 0.2  # TSB demand/probability smoothing — statsforecast has no auto-TSB
+TSB_ALPHA_P = 0.2
+
 # ── Resource guards (reliability) ─────────────────────────────────────────
 # Root cause these bound: an ever-growing series made single auto_arima fits
 # take minutes and gigabytes; abandoned/retried requests then piled up on the
 # request threadpool until the process ran out of memory.
 #
 # Per-fit work is bounded BY CONSTRUCTION:
-#   window ≤ MAX_FIT_POINTS  ×  SARIMA only when m ≤ SARIMA_MAX_M
+#   window ≤ MAX_FIT_POINTS  ×  ARIMA only when m ≤ SF_SEASON_MAX_M
+#   × ≤ MAX_CANDIDATES candidates × ≤ CV_MAX_FOLDS folds
 #   × constrained stepwise search (bounds above)
 # and the app sheds load (503) instead of stacking concurrent fits.
 MAX_FIT_POINTS = 512  # regularized grid points used for fitting
-SARIMA_MAX_M = 24  # above this, the seasonal rung is Holt-Winters (O(n)), not SARIMA
 MAX_CONCURRENT_FITS = 2  # heavy fits allowed at once (semaphore in app.py)
 FIT_GATE_TIMEOUT_S = 5.0  # how long a request waits for a fit slot before 503

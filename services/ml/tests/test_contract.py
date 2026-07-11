@@ -48,10 +48,24 @@ def test_successful_forecast_shape() -> None:
     resp = client.post("/forecast", json=_payload(demo_series(60), horizon=6, seasonal_period=12))
     assert resp.status_code == 200
     body = resp.json()
-    assert body["model"] == "sarima"
+    assert body["model"] in {"auto_ets", "auto_arima", "auto_theta", "seasonal_naive"}
     assert len(body["points"]) == 6
     assert set(body["points"][0]) == {"timestamp", "predicted", "lower", "upper"}
-    assert "in_sample_mape" in body["metrics"]
+    assert "train_points" in body["metrics"]
+    # Trust surfacing (guide §4 step 6) rides on the same response.
+    assert body["route"] == "seasonal"
+    assert isinstance(body["low_confidence"], bool)
+    assert body["candidates"] is not None
+    assert body["series_profile"]["n"] == 60
+    assert body["fit_config"]["model"] == body["model"]
+
+
+def test_horizon_beyond_history_rejected_with_reason() -> None:
+    resp = client.post("/forecast", json=_payload(demo_series(10), horizon=100))
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"] == "series_rejected"
+    assert body["reason"] == "horizon_too_long"
 
 
 def test_forecast_degenerate_series_serializes_cleanly() -> None:

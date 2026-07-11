@@ -53,6 +53,10 @@ def _detect_for_metric(session: Session, metric: Metric) -> int:
     )
     if run is None:
         return 0
+    if run.low_confidence:
+        # A baseline-quality band says nothing about what's anomalous —
+        # alerting off it is a false-positive storm (guide §4 step 6).
+        return 0
 
     # Actuals that landed on forecasted timestamps — the comparable window.
     pairs = session.execute(

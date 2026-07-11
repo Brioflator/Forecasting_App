@@ -9,10 +9,9 @@ dependencies = [
     "numpy>=1.26,<2",
     "pandas>=2.2,<3",
     "statsmodels>=0.14.2",
-    "pmdarima==2.0.4",
-    # pmdarima 2.0.4 calls sklearn's check_array(force_all_finite=...), which
-    # sklearn 1.6 renamed and 1.8 removed. Pin below 1.6 until pmdarima updates.
-    "scikit-learn>=1.3,<1.6",
+    # Exact pin: golden-file determinism depends on the numba-compiled model
+    # code not shifting under us. Bump deliberately, then regen goldens.
+    "statsforecast==2.0.3",
     "scipy>=1.11",
     "forecast-shared",
 ]

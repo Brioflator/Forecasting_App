@@ -8,17 +8,19 @@ restructuring.
 from __future__ import annotations
 
 import logging
+import signal
 import threading
-import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
 
 from shared.db import session as session_mod
 from shared.db.models import Connector
+from shared.domain import ConnectorStatus
 from shared.factory import make_event_bus, make_secrets_provider
 from shared.logging_setup import configure_logging
 from shared.settings import get_settings
+from shared.tls import use_os_trust_store
 from worker.consumers import register_consumers
 from worker.dispatch import dispatch_pending_forecasts
 from worker.extractors import default_registry
@@ -64,15 +66,33 @@ def sync_pull_jobs(scheduler: BackgroundScheduler, settings, secrets) -> tuple[i
 
     existing = {job.id for job in scheduler.get_jobs() if job.id.startswith("poll-")}
     added = 0
+    bad_connector_ids = []
     for job_id, (connector_id, cron) in desired.items():
+        try:
+            trigger = CronTrigger.from_crontab(cron)
+        except (ValueError, TypeError):
+            # A malformed schedule_cron must not crash worker startup (it runs
+            # here synchronously, before the loops start) — skip the connector,
+            # flag it, and keep scheduling the rest.
+            log.warning("connector %s has invalid cron %r; skipping", connector_id, cron)
+            bad_connector_ids.append(connector_id)
+            continue
         scheduler.add_job(
             _make_poll(connector_id, settings, secrets),
-            CronTrigger.from_crontab(cron),
+            trigger,
             id=job_id,
             replace_existing=True,
         )
         if job_id not in existing:
             added += 1
+
+    if bad_connector_ids:
+        with factory() as session:
+            for cid in bad_connector_ids:
+                connector = session.get(Connector, cid)
+                if connector is not None and connector.status != ConnectorStatus.ERROR:
+                    connector.status = ConnectorStatus.ERROR
+            session.commit()
 
     removed = 0
     for job_id in existing - set(desired):
@@ -143,6 +163,9 @@ def _register_maintenance_jobs(scheduler: BackgroundScheduler, settings) -> None
 def main() -> None:
     settings = get_settings()
     configure_logging("worker", settings.log_level)
+    # Trust the OS cert store before building the extractor's HTTPS client, so
+    # external pull connectors work behind a corporate TLS proxy.
+    use_os_trust_store()
     default_registry()
 
     secrets = make_secrets_provider(settings)
@@ -175,13 +198,21 @@ def main() -> None:
     for t in threads:
         t.start()
 
+    # Graceful shutdown: `docker stop` sends SIGTERM and Ctrl-C sends SIGINT.
+    # Flip the stop event so the loops drain and the scheduler shuts down
+    # cleanly. Without an explicit SIGTERM handler the default action kills the
+    # process mid-poll (SIGTERM does not raise KeyboardInterrupt/SystemExit).
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+
     log.info("worker started (scheduler + dispatch + relay)")
     try:
-        while True:
-            time.sleep(1)
-    except (KeyboardInterrupt, SystemExit):
+        while not stop.wait(1):
+            pass
+    finally:
         stop.set()
-        scheduler.shutdown()
+        scheduler.shutdown(wait=False)
+        log.info("worker stopped")
 
 
 if __name__ == "__main__":

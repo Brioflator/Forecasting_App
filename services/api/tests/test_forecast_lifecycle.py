@@ -58,7 +58,18 @@ def test_completed_forecast_reads_back_and_exports_csv(
     assert run is not None
     run.status = "completed"
     run.completed_at = datetime.now(tz=UTC)
-    run.model_params = {"order": [1, 0, 0], "m": 12, "warning": None}
+    run.model_params = {
+        "m": 12,
+        "warning": None,
+        "resolved_model": "auto_ets",
+        "metrics": {"cv_mase": 0.42},
+    }
+    run.low_confidence = True
+    run.backtest = {
+        "route": "seasonal",
+        "candidates": [{"model": "auto_ets", "mean_mase": 0.42}],
+        "confidence_reasons": ["high_error"],
+    }
     base = datetime(2026, 7, 1, tzinfo=UTC)
     for i in range(3):
         db_session.add(
@@ -76,6 +87,15 @@ def test_completed_forecast_reads_back_and_exports_csv(
     assert result["status"] == "completed"
     assert len(result["points"]) == 3
     assert result["points"][0]["predicted"] == 10.0
+    # Trust surfacing passes through (guide §4 step 6).
+    assert result["low_confidence"] is True
+    assert result["backtest"]["route"] == "seasonal"
+    assert result["backtest"]["confidence_reasons"] == ["high_error"]
+
+    history = client.get(f"/metrics/{mid}/forecasts").json()
+    assert history[0]["low_confidence"] is True
+    assert history[0]["cv_mase"] == 0.42
+    assert history[0]["resolved_model"] == "auto_ets"
 
     export = client.get(f"/forecasts/{run_id}/export?format=csv")
     assert export.status_code == 200

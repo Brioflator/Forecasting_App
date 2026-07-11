@@ -34,7 +34,7 @@ import type {
 } from "@/lib/types";
 import EdaReport from "./EdaReport";
 import ExportButtons from "./ExportButtons";
-import ForecastChart from "./ForecastChart";
+import ForecastChart, { cvMase } from "./ForecastChart";
 
 const POLL_MS = 1500;
 
@@ -271,8 +271,17 @@ export default function MetricDetail({
           {modelUsed && (
             <div className="text-xs text-ink/50">
               Model used: <span className="font-medium text-ink/80">{modelUsed}</span> ·
-              horizon <span className="font-mono tabular-nums">{run.horizon}</span> ·
-              requested{" "}
+              horizon <span className="font-mono tabular-nums">{run.horizon}</span>
+              {cvMase(run) != null && (
+                <>
+                  {" "}
+                  · MASE{" "}
+                  <span className="font-mono tabular-nums">
+                    {cvMase(run)!.toFixed(2)}
+                  </span>
+                </>
+              )}{" "}
+              · requested{" "}
               <span className="font-mono tabular-nums">
                 {new Date(run.requested_at).toLocaleString()}
               </span>
@@ -325,7 +334,27 @@ export default function MetricDetail({
                       <span className="text-ink">
                         {h.resolved_model ?? h.model_type} · h=
                         <span className="font-mono tabular-nums">{h.horizon}</span>
+                        {h.cv_mase != null && (
+                          <span className="text-ink/50">
+                            {" "}
+                            · MASE{" "}
+                            <span className="font-mono tabular-nums">
+                              {h.cv_mase.toFixed(2)}
+                            </span>
+                          </span>
+                        )}
                       </span>
+                      {h.low_confidence && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full bg-paprika"
+                              aria-label="Low confidence"
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>Low-confidence forecast</TooltipContent>
+                        </Tooltip>
+                      )}
                       <span className="ml-auto font-mono text-xs tabular-nums text-ink/40">
                         {new Date(h.requested_at).toLocaleString()}
                       </span>

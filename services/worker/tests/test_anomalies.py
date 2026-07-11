@@ -11,7 +11,9 @@ from shared.db.models import Anomaly, DataPoint, ForecastPointRow, ForecastRun, 
 from worker.anomalies import detect_anomalies
 
 
-def _completed_forecast(db_session: Session, seeded, base: datetime) -> ForecastRun:
+def _completed_forecast(
+    db_session: Session, seeded, base: datetime, *, low_confidence: bool = False
+) -> ForecastRun:
     run = ForecastRun(
         organization_id=seeded.org_id,
         metric_id=seeded.metric.id,
@@ -19,6 +21,7 @@ def _completed_forecast(db_session: Session, seeded, base: datetime) -> Forecast
         horizon=4,
         status="completed",
         completed_at=base,
+        low_confidence=low_confidence,
     )
     db_session.add(run)
     db_session.flush()
@@ -88,3 +91,14 @@ def test_sweep_is_idempotent(seeded, db_session: Session) -> None:
 def test_no_forecast_no_anomalies(seeded, db_session: Session) -> None:
     _actual(db_session, seeded, datetime(2026, 7, 1, tzinfo=UTC), 999.0)
     assert detect_anomalies(db_session) == 0
+
+
+def test_low_confidence_run_is_not_swept(seeded, db_session: Session) -> None:
+    """A baseline-quality band says nothing about what's anomalous — alerting
+    off it would be a false-positive storm (guide §4 step 6)."""
+    base = datetime(2026, 7, 1, tzinfo=UTC)
+    _completed_forecast(db_session, seeded, base, low_confidence=True)
+    _actual(db_session, seeded, base, 200.0)  # far outside the band
+
+    assert detect_anomalies(db_session) == 0
+    assert db_session.scalar(select(func.count()).select_from(Anomaly)) == 0

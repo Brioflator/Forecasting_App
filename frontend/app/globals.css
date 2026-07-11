@@ -54,6 +54,37 @@ body {
   @apply bg-canvas text-ink antialiased;
 }
 
+/* Warm paper grain over the whole canvas (doc 4 §2b "botanical" feel): a
+   fixed, pointer-events-none overlay so it never repaints on scroll. Sits
+   above app chrome but is ~3% opacity, so modals stay readable through it. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Ambient sway for the featured tile's fern frond: transform-only, slow,
+   and fully disabled under reduced motion (entrance animation is separately
+   gated in the component via useReducedMotion). */
+@media (prefers-reduced-motion: no-preference) {
+  .frond-sway {
+    animation: frond-sway 9s ease-in-out infinite alternate;
+    transform-origin: 20% 95%;
+  }
+}
+@keyframes frond-sway {
+  from {
+    transform: rotate(-1.4deg);
+  }
+  to {
+    transform: rotate(1.2deg);
+  }
+}
+
 /* Theme for the RJSF-generated wizard form (ADR-006: the bounded, one-time
    styling cost of schema-driven forms), re-themed to the botanical palette.
    ConnectorWizard depends on these class hooks; keep the selectors stable. */

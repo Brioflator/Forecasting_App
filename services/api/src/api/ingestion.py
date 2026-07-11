@@ -21,6 +21,7 @@ from sqlalchemy import select
 from api.deps import DbDep
 from shared.db.ingest import upsert_points
 from shared.db.models import Agent, Connector, Metric
+from shared.domain import AgentStatus, ConnectorStatus, PointSource
 from shared.models import IngestPayload
 
 router = APIRouter(tags=["ingestion"])
@@ -49,11 +50,11 @@ def _resolve_metric(db: DbDep, connector: Connector, metric_key: str) -> Metric:
 def webhook_ingress(webhook_token: str, payload: IngestPayload, db: DbDep) -> dict[str, int]:
     _check_size(payload)
     connector = db.scalar(select(Connector).where(Connector.webhook_token == webhook_token))
-    if connector is None or connector.status == "paused":
+    if connector is None or connector.status == ConnectorStatus.PAUSED:
         # 404 (not 401/403) so the token can't be probed apart from unknown paths.
         raise HTTPException(404, "not found")
     metric = _resolve_metric(db, connector, payload.metric_key)
-    accepted = upsert_points(db, metric, payload.points, source="webhook")
+    accepted = upsert_points(db, metric, payload.points, source=PointSource.WEBHOOK)
     return {"accepted": accepted}
 
 
@@ -66,7 +67,7 @@ def _agent_from_bearer(db: DbDep, authorization: str | None) -> Agent:
         raise HTTPException(401, "missing bearer token")
     token = authorization.split(" ", 1)[1].strip()
     agent = db.scalar(select(Agent).where(Agent.ingestion_token_hash == _hash_token(token)))
-    if agent is None or agent.status == "revoked":
+    if agent is None or agent.status == AgentStatus.REVOKED:
         raise HTTPException(401, "invalid or revoked agent token")
     return agent
 
@@ -86,11 +87,11 @@ def agent_ingest(
         raise HTTPException(409, "agent's connector no longer exists")
     metric = _resolve_metric(db, connector, payload.metric_key)
 
-    accepted = upsert_points(db, metric, payload.points, source="agent")
+    accepted = upsert_points(db, metric, payload.points, source=PointSource.AGENT)
     # An accepted ingest doubles as a heartbeat (guide §7.7).
     agent.last_heartbeat_at = datetime.now(tz=UTC)
-    if agent.status == "stale":
-        agent.status = "active"
+    if agent.status == AgentStatus.STALE:
+        agent.status = AgentStatus.ACTIVE
     return {"accepted": accepted}
 
 
@@ -101,6 +102,6 @@ def agent_heartbeat(
 ) -> dict[str, str]:
     agent = _agent_from_bearer(db, authorization)
     agent.last_heartbeat_at = datetime.now(tz=UTC)
-    if agent.status == "stale":
-        agent.status = "active"
+    if agent.status == AgentStatus.STALE:
+        agent.status = AgentStatus.ACTIVE
     return {"status": "ok"}

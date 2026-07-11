@@ -46,6 +46,23 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    max_body = settings.max_request_body_bytes
+
+    @app.middleware("http")
+    async def _cap_body_size(request, call_next):
+        # Reject by declared size before the body is read/parsed. The route-level
+        # point-count check stays as the backstop for chunked/unlabelled bodies.
+        from fastapi.responses import JSONResponse
+
+        content_length = request.headers.get("content-length")
+        if (
+            content_length is not None
+            and content_length.isdigit()
+            and int(content_length) > max_body
+        ):
+            return JSONResponse(status_code=413, content={"detail": "request body too large"})
+        return await call_next(request)
+
     @app.exception_handler(Unauthorized)
     async def _unauthorized(_request, exc: Unauthorized):
         from fastapi.responses import JSONResponse

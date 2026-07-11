@@ -119,6 +119,8 @@ export interface ForecastRunSummary {
   completed_at: string | null;
   warning: string | null;
   error_message: string | null;
+  low_confidence: boolean;
+  cv_mase: number | null;
 }
 
 export interface ConnectorRunItem {
@@ -142,6 +144,21 @@ export interface Dashboard {
   open_anomalies: number;
 }
 
+export interface CandidateScore {
+  model: string;
+  mean_mase: number | null;
+  mean_smape: number | null;
+  mean_rmse: number | null;
+}
+
+export interface ForecastBacktest {
+  route: string | null;
+  candidates: CandidateScore[] | null;
+  confidence_reasons: string[];
+  series_profile: Record<string, unknown> | null;
+  fit_config: Record<string, unknown> | null;
+}
+
 export interface ForecastRun {
   id: string;
   metric_id: string;
@@ -153,5 +170,7 @@ export interface ForecastRun {
   completed_at: string | null;
   error_message: string | null;
   warning: string | null;
+  low_confidence: boolean;
+  backtest: ForecastBacktest | null;
   points: ForecastPoint[];
 }

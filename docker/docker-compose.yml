@@ -1,12 +1,19 @@
 # The one-command local stack (doc 1 §8): pg, redis, api, worker, ml, frontend.
 # Fresh clone → cp .env.example .env && make up && make seed → rendered forecast
 # + downloaded CSV, no cloud account (guide §8 gate).
+#
+# Reach the app at http://localhost:3000 (frontend) once `docker compose up`
+# reports everything healthy. Every service auto-starts with the container
+# (restart: unless-stopped) and shuts down gracefully on `docker compose down`
+# / `docker stop`: `init: true` gives each container a real init (tini) as PID 1
+# that forwards SIGTERM to the app and reaps zombies.
 
 name: forecast-platform
 
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: forecast
       POSTGRES_PASSWORD: forecast
@@ -24,8 +31,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -36,6 +42,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ml
+    init: true
+    restart: unless-stopped
     env_file: ../.env
     ports:
       - "8100:8100"

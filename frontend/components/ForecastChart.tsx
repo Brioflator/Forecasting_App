@@ -22,7 +22,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Info, Warning, ArrowCounterClockwise } from "@phosphor-icons/react/dist/ssr";
+import { Info, Warning, ArrowCounterClockwise, ShieldWarning } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip as UiTooltip,
@@ -30,6 +30,25 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { DataPoint, ForecastRun } from "@/lib/types";
+
+// Plain-language readings of the ml confidence_reasons slugs (guide §4 step 6).
+const REASON_LABEL: Record<string, string> = {
+  baseline_not_beaten: "no model beat the naive baseline",
+  cv_skipped: "not enough history to backtest",
+  high_error: "backtest error is high",
+  fallback: "the chosen model failed to fit; used the baseline",
+};
+
+/** Chosen model's mean backtest MASE, stored by the worker under
+ * model_params.metrics (dispatch.py). */
+export function cvMase(run: ForecastRun | null): number | null {
+  const metrics = run?.model_params?.metrics;
+  if (metrics && typeof metrics === "object" && "cv_mase" in metrics) {
+    const v = (metrics as Record<string, unknown>).cv_mase;
+    if (typeof v === "number") return v;
+  }
+  return null;
+}
 
 interface Row {
   t: number;
@@ -150,6 +169,9 @@ export default function ForecastChart({
       ? new Date(actuals[actuals.length - 1].timestamp).getTime()
       : undefined;
   const warning = primary?.status === "completed" ? primary.warning : null;
+  const lowConfidence = primary?.status === "completed" && primary.low_confidence;
+  const confidenceReasons = primary?.backtest?.confidence_reasons ?? [];
+  const mase = cvMase(primary ?? null);
 
   const clampDomain = useCallback(
     (d: Domain): Domain => {
@@ -258,6 +280,31 @@ export default function ForecastChart({
         {caption ? (
           <div className="flex items-center gap-1.5 text-sm text-ink/70">
             <span>{caption}</span>
+            {mase != null && (
+              <span className="text-xs text-ink/50">
+                · backtest MASE{" "}
+                <span className="font-mono tabular-nums">{mase.toFixed(2)}</span>
+              </span>
+            )}
+            {lowConfidence && (
+              <UiTooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex cursor-default items-center gap-1 rounded-full bg-paprika/10 px-2 py-0.5 text-xs font-medium text-paprika-ink">
+                    <ShieldWarning size={12} weight="regular" />
+                    Low confidence
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {confidenceReasons.length > 0
+                    ? confidenceReasons
+                        .map((r) => REASON_LABEL[r] ?? r)
+                        .join("; ")
+                    : "This forecast did not earn confidence in backtesting."}
+                  {mase != null &&
+                    ` (MASE ${mase.toFixed(2)} — values above 1 are worse than naive.)`}
+                </TooltipContent>
+              </UiTooltip>
+            )}
             <UiTooltip>
               <TooltipTrigger asChild>
                 <button

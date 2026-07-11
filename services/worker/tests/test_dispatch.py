@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ml import forecasting
-from ml.errors import InsufficientData
+from ml.errors import InsufficientData, SeriesRejected
 from shared.db.models import DataPoint, ForecastPointRow, ForecastRun
 from shared.models import ForecastRequest
 from shared.synthetic import sample_value
@@ -36,7 +36,7 @@ class _InProcessMlClient:
                 seasonal_period=request.seasonal_period,
                 confidence=request.confidence,
             )
-        except InsufficientData as exc:
+        except (InsufficientData, SeriesRejected) as exc:
             raise ForecastFailed(str(exc)) from exc
         return {
             "model": result.model,
@@ -53,6 +53,12 @@ class _InProcessMlClient:
             ],
             "metrics": result.metrics,
             "warning": result.warning,
+            "route": result.route,
+            "candidates": result.candidates,
+            "low_confidence": result.low_confidence,
+            "confidence_reasons": result.confidence_reasons,
+            "series_profile": result.series_profile,
+            "fit_config": result.fit_config,
         }
 
 
@@ -89,7 +95,7 @@ def _enqueue(db_session: Session, seeded, horizon: int = 6, model: str = "auto")
 
 
 def test_dispatch_completes_a_forecast(seeded, db_session: Session) -> None:
-    _seed_series(db_session, seeded, 48)  # ≥ 2 cycles at m=12 → SARIMA
+    _seed_series(db_session, seeded, 48)  # ≥ 2 cycles at m=12 → seasonal route + CV
     run_id = _enqueue(db_session, seeded, horizon=6)
     db_session.commit()
 
@@ -100,7 +106,18 @@ def test_dispatch_completes_a_forecast(seeded, db_session: Session) -> None:
     assert run is not None
     assert run.status == "completed"
     assert run.completed_at is not None
-    assert run.model_params.get("resolved_model") == "sarima"
+    assert run.model_params.get("resolved_model") in {
+        "auto_ets",
+        "auto_arima",
+        "auto_theta",
+        "seasonal_naive",
+    }
+    # Trust surfacing persisted to its own columns (migration 0008).
+    assert isinstance(run.low_confidence, bool)
+    assert run.backtest is not None
+    assert run.backtest["route"] == "seasonal"
+    assert run.backtest["candidates"], "per-candidate CV scores must be stored"
+    assert run.backtest["fit_config"]["model"] == run.model_params["resolved_model"]
 
     points = db_session.scalars(
         select(ForecastPointRow).where(ForecastPointRow.forecast_run_id == run_id)

@@ -21,6 +21,8 @@ def run_to_out(run: ForecastRun) -> ForecastRunOut:
         completed_at=run.completed_at,
         error_message=run.error_message,
         warning=warning,
+        low_confidence=run.low_confidence,
+        backtest=run.backtest,
         points=[
             ForecastPointOut(
                 timestamp=p.timestamp,
