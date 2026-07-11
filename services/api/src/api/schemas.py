@@ -8,7 +8,20 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from croniter import croniter
+from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_cron(value: str | None) -> str | None:
+    """Reject a malformed schedule_cron at the API door.
+
+    The worker also guards each add_job (a bad cron there once crash-looped
+    startup), but validating on write gives the caller a 422 instead of a
+    connector that silently never polls.
+    """
+    if value is not None and not croniter.is_valid(value):
+        raise ValueError(f"invalid cron expression: {value!r}")
+    return value
 
 
 class ConnectorDefinitionOut(BaseModel):
@@ -32,12 +45,16 @@ class ConnectorCreate(BaseModel):
     # never persisted in the connectors row itself (guide §7.3).
     secret: str | None = None
 
+    _check_cron = field_validator("schedule_cron")(_validate_cron)
+
 
 class ConnectorUpdate(BaseModel):
     name: str | None = None
     config: dict[str, Any] | None = None
     schedule_cron: str | None = None
     status: str | None = None
+
+    _check_cron = field_validator("schedule_cron")(_validate_cron)
 
 
 class ConnectorOut(BaseModel):
@@ -111,6 +128,8 @@ class ForecastRunOut(BaseModel):
     completed_at: datetime | None
     error_message: str | None
     warning: str | None = None
+    low_confidence: bool = False
+    backtest: dict[str, Any] | None = None  # route, CV scores, profile, fit_config
     points: list[ForecastPointOut] = Field(default_factory=list)
 
 
@@ -183,6 +202,8 @@ class ForecastRunSummaryOut(BaseModel):
     completed_at: datetime | None
     warning: str | None
     error_message: str | None
+    low_confidence: bool = False
+    cv_mase: float | None = None  # chosen model's mean backtest MASE
 
 
 class ConnectorRunOut(BaseModel):

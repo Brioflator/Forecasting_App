@@ -57,6 +57,48 @@ def test_connector_config_validated_against_schema(client: TestClient) -> None:
     assert "value_path" in resp.text or "required" in resp.text
 
 
+def test_connector_config_validated_on_patch(client: TestClient) -> None:
+    # A PATCH must not be able to drop a required field (base_url) and leave the
+    # poller to KeyError — same JSON-Schema check as create.
+    cid = _create_connector(client)
+    resp = client.patch(f"/connectors/{cid}", json={"config": {"value_path": "$.value"}})
+    assert resp.status_code == 422
+    assert "base_url" in resp.text or "required" in resp.text
+
+
+def test_invalid_cron_rejected_on_create(client: TestClient) -> None:
+    resp = client.post(
+        "/connectors",
+        json={
+            "connector_definition_key": "generic_rest",
+            "name": "bad cron",
+            "ingestion_method": "pull",
+            "schedule_cron": "not a cron",
+            "config": {"base_url": "http://x", "value_path": "$.value"},
+        },
+    )
+    assert resp.status_code == 422
+    assert "cron" in resp.text.lower()
+
+
+def test_invalid_cron_rejected_on_patch(client: TestClient) -> None:
+    cid = _create_connector(client)
+    resp = client.patch(f"/connectors/{cid}", json={"schedule_cron": "99 99 * * *"})
+    assert resp.status_code == 422
+
+
+def test_oversized_body_rejected_before_parsing(client: TestClient) -> None:
+    # A body over the cap is refused with 413 by Content-Length, before FastAPI
+    # parses it — the payload here is deliberately not valid JSON.
+    oversized = b"x" * (8_000_000 + 1)
+    resp = client.post(
+        "/connectors",
+        content=oversized,
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+
+
 def test_unknown_definition_404(client: TestClient) -> None:
     resp = client.post(
         "/connectors",

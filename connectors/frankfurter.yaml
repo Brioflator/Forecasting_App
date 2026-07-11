@@ -1,0 +1,26 @@
+# Frankfurter connector (doc 1 §4.1): free, no-auth foreign-exchange API backed
+# by ECB reference rates. Rates change on business days, so this is a daily
+# cadence source. Pull reads the latest rate; the timestamp is stamped at poll
+# time.
+key: frankfurter
+name: Frankfurter (FX rates)
+description: >-
+  Track a foreign-exchange rate from Frankfurter's free public API (no key
+  required, ECB data). Defaults to USD to EUR; change base/symbols in the URL
+  for any supported pair. Daily cadence.
+supports_pull: true
+supports_push: false
+supports_agent: false
+config_schema:
+  type: object
+  required: [base_url, value_path]
+  properties:
+    base_url:
+      type: string
+      title: "API URL"
+      format: uri
+      default: "https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR"
+    value_path:
+      type: string
+      title: "JSONPath to the rate"
+      default: "$.rates.EUR"

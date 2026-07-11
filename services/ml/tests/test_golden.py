@@ -45,6 +45,12 @@ def _run_forecast(request: dict) -> dict:
         ],
         "metrics": result.metrics,
         "warning": result.warning,
+        "route": result.route,
+        "low_confidence": result.low_confidence,
+        "confidence_reasons": result.confidence_reasons,
+        "candidates": result.candidates,
+        "series_profile": result.series_profile,
+        "fit_config": result.fit_config,
     }
 
 

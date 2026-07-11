@@ -11,6 +11,8 @@ import type {
   NotificationItem,
 } from "@/lib/types";
 import { BentoGrid, BentoTile } from "@/components/dashboard/BentoGrid";
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { AsciiArt, ASCII_MEADOW } from "@/components/dashboard/BotanicalArt";
 import { FeaturedTile } from "@/components/dashboard/FeaturedTile";
 import { KpiTile } from "@/components/dashboard/KpiTile";
 import {
@@ -153,12 +155,10 @@ export default async function DashboardPage() {
   }
 
   const header = (
-    <div>
-      <h1 className="text-2xl font-semibold text-pine">Overview</h1>
-      <p className="mt-1 text-sm text-ink/60">
-        What your data has been doing while you were away.
-      </p>
-    </div>
+    <DashboardHeader
+      title="Overview"
+      subtitle="What your data has been doing while you were away."
+    />
   );
 
   if (!stats) {
@@ -243,13 +243,20 @@ export default async function DashboardPage() {
           <ActivityFeed notifications={notifications} />
         </BentoTile>
 
-        {/* Metrics tracked: 6 cols, white — closes the last row against the tall activity tile */}
+        {/* Metrics tracked: 6 cols, white — closes the last row against the tall
+            activity tile; the wide right edge carries the ASCII meadow. */}
         <BentoTile colSpan={6}>
           <KpiTile
             label="Metrics tracked"
             value={stats.metrics}
             href="/metrics"
             icon={<Database size={20} weight="regular" />}
+            decoration={
+              <AsciiArt
+                art={ASCII_MEADOW}
+                className="absolute bottom-4 right-5 hidden text-[9px] leading-[11px] text-ink/15 md:block"
+              />
+            }
           />
         </BentoTile>
       </BentoGrid>

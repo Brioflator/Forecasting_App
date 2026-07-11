@@ -105,17 +105,17 @@ def test_forecast_endpoint_sheds_load_when_saturated(monkeypatch) -> None:
     assert resp.status_code == 200
 
 
-def test_large_seasonal_period_skips_sarima() -> None:
-    """SARIMA cost grows with the state-space dimension (~m); a weekly period
-    (168) must go to Holt-Winters, which handles long seasonality in O(n)."""
+def test_large_seasonal_period_excludes_arima() -> None:
+    """ARIMA cost grows with the state-space dimension (~m); a weekly period
+    (168) must never reach an ARIMA fit — the candidate set excludes it."""
     series = _minute_series(400)
     result = forecasting.forecast(series=series, horizon=6, seasonal_period=168)
-    assert result.model != "sarima"
+    assert result.model not in {"sarima", "auto_arima"}
 
 
 def test_explicit_sarima_with_large_m_substitutes_with_warning() -> None:
     series = _minute_series(400)
     result = forecasting.forecast(series=series, horizon=6, model="sarima", seasonal_period=168)
-    assert result.model != "sarima"
+    assert result.model not in {"sarima", "auto_arima"}
     assert result.warning is not None
     assert "sarima" in result.warning.lower()

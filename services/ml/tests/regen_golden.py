@@ -52,6 +52,12 @@ def run_forecast(request: dict[str, Any]) -> dict[str, Any]:
         ],
         "metrics": result.metrics,
         "warning": result.warning,
+        "route": result.route,
+        "low_confidence": result.low_confidence,
+        "confidence_reasons": result.confidence_reasons,
+        "candidates": result.candidates,
+        "series_profile": result.series_profile,
+        "fit_config": result.fit_config,
     }
 
 
@@ -65,6 +71,17 @@ def run_eda(request: dict[str, Any]) -> dict[str, Any]:
 RUNNERS = {"forecast": run_forecast, "eda": run_eda}
 
 
+def _intermittent_series(n: int) -> list[Point]:
+    """Deterministic sparse-demand series: a sale every 5th day, RNG-free."""
+    from datetime import UTC, datetime
+
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    return [
+        Point(timestamp=base + timedelta(days=i), value=7.0 if i % 5 == 0 else 0.0)
+        for i in range(n)
+    ]
+
+
 CASES: list[dict[str, Any]] = [
     {
         "name": "sarima_hourly_m12",
@@ -73,6 +90,16 @@ CASES: list[dict[str, Any]] = [
             "series": _series_raw(demo_series(60, step=timedelta(hours=1))),
             "horizon": 12,
             "seasonal_period": 12,
+            "confidence": 0.95,
+        },
+    },
+    {
+        "name": "intermittent_daily",
+        "kind": "forecast",
+        "request": {
+            "series": _series_raw(_intermittent_series(60)),
+            "horizon": 7,
+            "seasonal_period": None,
             "confidence": 0.95,
         },
     },

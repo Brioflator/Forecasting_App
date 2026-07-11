@@ -1,6 +1,6 @@
 # Forecast Platform
 
-Self-hostable metric collection + forecasting: connectors collect data on a schedule, a stateless ml service produces SARIMA/ETS forecasts with confidence intervals, a Next.js frontend charts and exports them. Master spec: `forecast-platform-project-guide.md`; build guides `01`–`05` (local build, production deploy, ml service, frontend, implementation plan).
+Self-hostable metric collection + forecasting: connectors collect data on a schedule, a stateless ml service routes each series to a StatsForecast model zoo (AutoARIMA/AutoETS/AutoTheta/Croston + naive baselines), backtests candidates with rolling-origin CV, and returns forecasts with confidence intervals and an explicit low-confidence flag; a Next.js frontend charts and exports them. Master spec: `forecast-platform-project-guide.md`; build guides `01`–`05` (local build, production deploy, ml service, frontend, implementation plan).
 
 Scope boundary: the local/open-source product (POC + MVP + full-product layer) is complete. Production deployment — Supabase providers, Kafka/SQS, container hosting (doc `02`) — is intentionally not started; those providers raise `NotImplementedError` by design. Do not begin doc 02 work unless explicitly asked.
 
@@ -29,8 +29,9 @@ TEST_DATABASE_URL=postgresql+psycopg://...:.../forecast_test python -m uv run py
 
 ## Gotchas
 
-- pmdarima 2.0.4 requires `numpy<2` AND `scikit-learn<1.6` (pinned in `services/ml/pyproject.toml`). If the pins are loosened, SARIMA silently falls back down the model ladder.
-- The ml ladder cascades to the naive floor on ANY executor failure, and NaN diagnostics are dropped before JSON — a "working" forecast may be a silent fallback; check the returned model name.
+- `statsforecast` is pinned exactly (`services/ml/pyproject.toml`) — golden-file determinism depends on the numba-compiled model code not shifting. Bump deliberately, then `make regen-golden` and review the diff. pmdarima was removed with it went the old `scikit-learn<1.6` pin; `numpy<2` is kept until deliberately lifted.
+- The ml pipeline lands on the naive floor on ANY engine failure, and NaN diagnostics are dropped before JSON — but fallback is no longer silent: check `low_confidence` + `confidence_reasons` on the response (and the returned model name).
+- `FORECAST_ENGINE=legacy` runs the statsmodels ladder (no ARIMA rung, no CV, always `low_confidence`) for machines where statsforecast/numba can't install.
 - `regularize()` in ml must use `resample()`'s own bucket labels, never a `date_range` anchored at the first raw timestamp — unaligned webhook timestamps otherwise produce an all-NaN series.
 - If an Alembic migration file is rewritten after a database already recorded it as applied, recreate that database — Alembic will not re-run it.
 - Frontend motion: never strip Motion `variants` for `prefers-reduced-motion` (SSR'd hidden styles then stay invisible forever). Toggle only `initial={reduceMotion ? false : "hidden"}` — the full rule is in the JSDoc of `frontend/lib/motion.ts`.

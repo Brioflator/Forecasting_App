@@ -2,7 +2,7 @@
 COMPOSE = docker compose -f docker/docker-compose.yml
 TEST_DB ?= postgresql+psycopg://forecast:forecast@localhost:5432/forecast_test
 
-.PHONY: up down logs seed migrate test lint regen-golden
+.PHONY: up down logs seed seed-live migrate test lint regen-golden
 
 up:            ## build + start the whole stack (pg, redis, api, worker, ml, frontend)
 	$(COMPOSE) up --build -d
@@ -15,6 +15,9 @@ logs:          ## follow all service logs
 
 seed:          ## load connector catalog + demo connector/metric + 48-point backfill
 	$(COMPOSE) exec api uv run --no-sync python -m api.seed
+
+seed-live:     ## add real free-API connectors (CoinGecko, Open-Meteo, Frankfurter) + real history
+	$(COMPOSE) exec api uv run --no-sync python -m api.seed_live
 
 migrate:       ## run alembic upgrade head (api container)
 	$(COMPOSE) exec api uv run --no-sync alembic upgrade head

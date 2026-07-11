@@ -12,6 +12,7 @@ import numpy as np
 
 from ml.constants import SEASONALITY_MODERATE, SEASONALITY_STRONG
 from ml.forecasting import autodetect_period
+from ml.profile import seasonal_strength
 from ml.regularize import cap_fit_window, regularize
 from shared.models import Point
 
@@ -53,15 +54,7 @@ def _seasonality(values: np.ndarray, m: int | None) -> dict[str, Any]:
             "strength": 0.0,
             "plain": "No reliable seasonal pattern detected.",
         }
-    from statsmodels.tsa.seasonal import STL
-
-    stl = STL(values, period=m, robust=True).fit()
-    resid = np.asarray(stl.resid, dtype="float64")
-    seasonal = np.asarray(stl.seasonal, dtype="float64")
-    var_resid = float(np.var(resid))
-    var_rs = float(np.var(resid + seasonal))
-    strength = 0.0 if var_rs == 0 else max(0.0, 1.0 - var_resid / var_rs)
-    strength = min(1.0, strength)
+    strength = seasonal_strength(values, m)
     if strength > SEASONALITY_STRONG:
         band = "Strong"
     elif strength >= SEASONALITY_MODERATE:

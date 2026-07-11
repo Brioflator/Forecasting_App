@@ -40,7 +40,7 @@ function describe(n: NotificationItem): string {
   const p = n.payload as Record<string, string | number>;
   switch (n.type) {
     case "forecast_completed":
-      return `Forecast completed for "${p.metric_name}" using ${p.model ?? "auto"}${p.warning ? ` (warning: ${p.warning})` : ""}`;
+      return `Forecast completed for "${p.metric_name}" using ${p.model ?? "auto"}${p.low_confidence ? " (low confidence)" : ""}${p.warning ? ` (warning: ${p.warning})` : ""}`;
     case "anomaly_detected":
       return `${p.count} observation${Number(p.count) === 1 ? "" : "s"} on "${p.metric_name}" fell outside the forecast's confidence band (worst: ${p.worst_severity})`;
     case "connector_error":

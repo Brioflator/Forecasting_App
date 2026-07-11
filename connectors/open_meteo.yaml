@@ -1,0 +1,25 @@
+# Open-Meteo connector (doc 1 §4.1): free, no-auth weather API. Temperature has
+# a strong 24h cycle, which makes it the best live-data forecasting demo. Pull
+# reads the current temperature; timestamp is stamped at poll time (on the hour).
+key: open_meteo
+name: Open-Meteo (weather)
+description: >-
+  Track current temperature (deg C) from Open-Meteo's free public API (no key
+  required). Defaults to London; change latitude/longitude in the URL for any
+  location. Strong daily seasonality (seasonal_period 24 on an hourly cadence).
+supports_pull: true
+supports_push: false
+supports_agent: false
+config_schema:
+  type: object
+  required: [base_url, value_path]
+  properties:
+    base_url:
+      type: string
+      title: "API URL"
+      format: uri
+      default: "https://api.open-meteo.com/v1/forecast?latitude=51.51&longitude=-0.13&current=temperature_2m"
+    value_path:
+      type: string
+      title: "JSONPath to the value"
+      default: "$.current.temperature_2m"

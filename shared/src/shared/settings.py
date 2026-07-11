@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     # ── Service wiring ──
+    # Reject oversized request bodies by Content-Length before FastAPI parses
+    # them (the per-delivery point cap only bounds what's persisted, not what's
+    # parsed). ~8 MB comfortably fits a max 10k-point delivery.
+    max_request_body_bytes: int = 8_000_000
     api_port: int = 8000
     ml_port: int = 8100
     ml_service_url: str = "http://ml:8100"
@@ -59,16 +63,26 @@ class Settings(BaseSettings):
     # how often the worker re-syncs pull jobs against the connectors table, so
     # wizard-created connectors start polling without a restart
     connector_sync_interval_seconds: float = 30
+    # SSRF guard: pull connectors may only fetch globally-routable hosts. Set
+    # True only for trusted self-hosted deployments whose sources live on the
+    # internal network (worker/ssrf.py).
+    connector_allow_private_hosts: bool = False
     # anomaly detection (guide §5.7, v2.x pulled into the local product):
     # actuals outside the latest forecast's confidence band → anomalies rows
     anomaly_sweep_interval_seconds: float = 60  # 0 = disabled
 
     # ── ml knobs (doc 3 §4–§5) ──
+    # statsforecast is the statistical backbone (revalidation guide §3);
+    # "legacy" falls back to the statsmodels ladder (no ARIMA rung, no CV)
+    # for machines where statsforecast/numba cannot install.
+    forecast_engine: str = "statsforecast"  # statsforecast | legacy
     forecast_default_confidence: float = 0.95
     gap_fill_max_consecutive: int = 3
     gap_fill_max_fraction: float = 0.05
-    auto_arima_max_p: int = 5
-    auto_arima_max_q: int = 5
+    # NOTE: AutoARIMA search bounds are NOT here — they live in
+    # services/ml/src/ml/constants.py (AUTO_ARIMA_MAX_*), kept low for OOM
+    # safety. A settings knob here would be dead config (nothing reads it) and
+    # would tempt raising the bound past the safe ceiling.
 
     # ── production only (doc 2) — present but unused when APP_EDITION=local ──
     supabase_url: str | None = None

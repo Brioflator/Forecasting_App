@@ -11,16 +11,18 @@ from __future__ import annotations
 
 import logging
 import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from ml import eda as eda_mod
-from ml import forecasting
+from ml import forecasting, sf_engine
 from ml.constants import FIT_GATE_TIMEOUT_S, MAX_CONCURRENT_FITS
-from ml.errors import InsufficientData
+from ml.errors import InsufficientData, SeriesRejected
 from shared.logging_setup import configure_logging
 from shared.models import (
+    CandidateScore,
     EdaRequest,
     EdaResponse,
     ForecastError,
@@ -32,7 +34,17 @@ from shared.settings import get_settings
 
 configure_logging("ml", get_settings().log_level)
 log = logging.getLogger("ml.app")
-app = FastAPI(title="Forecast ML Service", version="0.1.0")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Numba JIT warm-up runs off-thread WITHOUT a fit slot: it must not delay
+    # startup or block the two real fit slots while it compiles.
+    threading.Thread(target=sf_engine.warmup, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Forecast ML Service", version="0.1.0", lifespan=_lifespan)
 
 _fit_gate = threading.BoundedSemaphore(MAX_CONCURRENT_FITS)
 _slots_lock = threading.Lock()
@@ -95,6 +107,14 @@ def forecast_endpoint(req: ForecastRequest) -> ForecastResponse | JSONResponse:
             error="insufficient_data", detail=str(exc), min_required=exc.min_required
         )
         return JSONResponse(status_code=422, content=body.model_dump())
+    except SeriesRejected as exc:
+        body = ForecastError(
+            error="series_rejected",
+            detail=exc.detail,
+            min_required=exc.min_required,
+            reason=exc.reason,
+        )
+        return JSONResponse(status_code=422, content=body.model_dump())
     except ValueError as exc:
         body = ForecastError(error="invalid_request", detail=str(exc), min_required=0)
         return JSONResponse(status_code=422, content=body.model_dump())
@@ -108,6 +128,16 @@ def forecast_endpoint(req: ForecastRequest) -> ForecastResponse | JSONResponse:
         points=[ForecastPoint(**p) for p in result.points],
         metrics=result.metrics,
         warning=result.warning,
+        route=result.route,
+        candidates=(
+            [CandidateScore.model_validate(c) for c in result.candidates]
+            if result.candidates is not None
+            else None
+        ),
+        low_confidence=result.low_confidence,
+        confidence_reasons=result.confidence_reasons,
+        series_profile=result.series_profile,
+        fit_config=result.fit_config,
     )
 
 

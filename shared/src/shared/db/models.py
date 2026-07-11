@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -176,6 +177,11 @@ class ForecastRun(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_message: Mapped[str | None] = mapped_column(Text)
+    # Trust surfacing (migration 0008): explicit not-earned-confidence flag and
+    # the full backtest payload (route, per-candidate CV scores, series profile,
+    # deterministic re-fit config) the ml service returned.
+    low_confidence: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    backtest: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     points: Mapped[list[ForecastPointRow]] = relationship(
         back_populates="run", cascade="all, delete-orphan"

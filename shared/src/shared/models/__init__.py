@@ -4,8 +4,10 @@
 """
 
 from shared.models.dto import (
+    CandidateScore,
     EdaRequest,
     EdaResponse,
+    FoldScore,
     ForecastError,
     ForecastPoint,
     ForecastRequest,
@@ -15,8 +17,10 @@ from shared.models.dto import (
 )
 
 __all__ = [
+    "CandidateScore",
     "EdaRequest",
     "EdaResponse",
+    "FoldScore",
     "ForecastError",
     "ForecastPoint",
     "ForecastRequest",

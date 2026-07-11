@@ -8,16 +8,15 @@ would add latency for nothing. Forecasts stay on the worker path.
 
 from __future__ import annotations
 
-import uuid
 from functools import lru_cache
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
-from api.deps import DbDep, PrincipalDep
+from api.deps import DbDep, OwnedMetricDep
 from api.schemas import EdaReportOut
-from shared.db.models import DataPoint, EdaReportRow, Metric
+from shared.db.models import DataPoint, EdaReportRow
 from shared.settings import get_settings
 
 router = APIRouter(tags=["eda"])
@@ -56,15 +55,6 @@ def _client() -> EdaClient:
     return _override or _default_client()
 
 
-def _owned_metric(db: DbDep, org_id: str, metric_id: uuid.UUID) -> Metric:
-    metric = db.scalar(
-        select(Metric).where(Metric.id == metric_id, Metric.organization_id == uuid.UUID(org_id))
-    )
-    if metric is None:
-        raise HTTPException(404, "metric not found")
-    return metric
-
-
 def _to_out(report: EdaReportRow) -> EdaReportOut:
     return EdaReportOut(
         id=report.id,
@@ -77,8 +67,7 @@ def _to_out(report: EdaReportRow) -> EdaReportOut:
 
 
 @router.post("/metrics/{metric_id}/eda", response_model=EdaReportOut)
-def generate_eda(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> EdaReportOut:
-    metric = _owned_metric(db, principal.org_id, metric_id)
+def generate_eda(metric: OwnedMetricDep, db: DbDep) -> EdaReportOut:
     rows = db.scalars(
         select(DataPoint).where(DataPoint.metric_id == metric.id).order_by(DataPoint.timestamp)
     ).all()
@@ -104,8 +93,7 @@ def generate_eda(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> Ed
 
 
 @router.get("/metrics/{metric_id}/eda", response_model=EdaReportOut)
-def latest_eda(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> EdaReportOut:
-    metric = _owned_metric(db, principal.org_id, metric_id)
+def latest_eda(metric: OwnedMetricDep, db: DbDep) -> EdaReportOut:
     report = db.scalar(
         select(EdaReportRow)
         .where(EdaReportRow.metric_id == metric.id)

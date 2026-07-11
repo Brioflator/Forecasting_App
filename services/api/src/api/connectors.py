@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from jsonschema import Draft7Validator
 from sqlalchemy import select
 
-from api.deps import DbDep, PrincipalDep
+from api.deps import DbDep, OwnedConnectorDep, PrincipalDep
 from api.schemas import (
     ConnectorCreate,
     ConnectorDefinitionOut,
@@ -18,8 +18,20 @@ from api.schemas import (
     ConnectorUpdate,
 )
 from shared.db.models import Connector, ConnectorDefinition, ConnectorRun
+from shared.domain import ConnectorStatus, IngestionMethod
 
 router = APIRouter(tags=["connectors"])
+
+
+def _validate_config(config_schema: dict, config: dict) -> None:
+    """Validate submitted config against the definition's JSON Schema — the same
+    schema that drives the wizard form (doc 4 §6). Raises 422 on the first error."""
+    errors = sorted(
+        Draft7Validator(config_schema).iter_errors(config),
+        key=lambda e: list(e.path),
+    )
+    if errors:
+        raise HTTPException(422, f"invalid connector config: {errors[0].message}")
 
 
 def _to_out(c: Connector) -> ConnectorOut:
@@ -48,18 +60,12 @@ def create_connector(body: ConnectorCreate, db: DbDep, principal: PrincipalDep) 
     if definition is None:
         raise HTTPException(404, f"unknown connector definition: {body.connector_definition_key}")
 
-    # Validate submitted config against the definition's JSON Schema — the same
-    # schema that drives the wizard form (doc 4 §6).
-    errors = sorted(
-        Draft7Validator(definition.config_schema).iter_errors(body.config),
-        key=lambda e: list(e.path),
-    )
-    if errors:
-        raise HTTPException(422, f"invalid connector config: {errors[0].message}")
+    _validate_config(definition.config_schema, body.config)
 
-    if body.ingestion_method not in ("push", "pull", "agent"):
-        raise HTTPException(422, "ingestion_method must be push|pull|agent")
+    if body.ingestion_method not in IngestionMethod:
+        raise HTTPException(422, f"ingestion_method must be one of {', '.join(IngestionMethod)}")
 
+    is_push = body.ingestion_method == IngestionMethod.PUSH
     connector = Connector(
         organization_id=uuid.UUID(principal.org_id),
         connector_definition_id=definition.id,
@@ -67,7 +73,7 @@ def create_connector(body: ConnectorCreate, db: DbDep, principal: PrincipalDep) 
         config=body.config,
         ingestion_method=body.ingestion_method,
         schedule_cron=body.schedule_cron,
-        webhook_token=secrets.token_urlsafe(24) if body.ingestion_method == "push" else None,
+        webhook_token=secrets.token_urlsafe(24) if is_push else None,
     )
     db.add(connector)
     db.flush()
@@ -94,36 +100,23 @@ def list_connectors(db: DbDep, principal: PrincipalDep) -> list[ConnectorOut]:
     return [_to_out(c) for c in rows]
 
 
-def _get_owned(db: DbDep, principal: PrincipalDep, connector_id: uuid.UUID) -> Connector:
-    connector = db.scalar(
-        select(Connector).where(
-            Connector.id == connector_id,
-            Connector.organization_id == uuid.UUID(principal.org_id),
-        )
-    )
-    if connector is None:
-        raise HTTPException(404, "connector not found")
-    return connector
-
-
 @router.get("/connectors/{connector_id}", response_model=ConnectorOut)
-def get_connector(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> ConnectorOut:
-    return _to_out(_get_owned(db, principal, connector_id))
+def get_connector(connector: OwnedConnectorDep) -> ConnectorOut:
+    return _to_out(connector)
 
 
 @router.delete("/connectors/{connector_id}", status_code=204)
-def delete_connector(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> None:
+def delete_connector(connector: OwnedConnectorDep, db: DbDep) -> None:
     """Delete a connector and everything under it (metrics/points cascade).
     The stored secret is revoked first so no orphaned credential lingers in
     the SecretsProvider (guide §7.5 instant-revocation posture)."""
-    connector = _get_owned(db, principal, connector_id)
     if connector.secret_ref:
         from shared.factory import make_secrets_provider
         from shared.settings import get_settings
 
         try:
             make_secrets_provider(get_settings()).revoke_secret(
-                principal.org_id, connector.secret_ref
+                str(connector.organization_id), connector.secret_ref
             )
         except Exception:  # noqa: BLE001 — a missing secret must not block deletion
             pass
@@ -132,13 +125,11 @@ def delete_connector(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep
 
 @router.get("/connectors/{connector_id}/runs", response_model=list[ConnectorRunOut])
 def list_connector_runs(
-    connector_id: uuid.UUID,
+    connector: OwnedConnectorDep,
     db: DbDep,
-    principal: PrincipalDep,
     limit: int = Query(20, ge=1, le=100),
 ) -> list[ConnectorRunOut]:
     """Poll audit history for the connector detail screen (doc 1 §7)."""
-    connector = _get_owned(db, principal, connector_id)
     rows = db.scalars(
         select(ConnectorRun)
         .where(ConnectorRun.connector_id == connector.id)
@@ -160,18 +151,22 @@ def list_connector_runs(
 
 @router.patch("/connectors/{connector_id}", response_model=ConnectorOut)
 def update_connector(
-    connector_id: uuid.UUID, body: ConnectorUpdate, db: DbDep, principal: PrincipalDep
+    body: ConnectorUpdate, connector: OwnedConnectorDep, db: DbDep
 ) -> ConnectorOut:
-    connector = _get_owned(db, principal, connector_id)
     if body.name is not None:
         connector.name = body.name
     if body.config is not None:
+        # Same JSON-Schema check as create — a PATCH must not be able to drop
+        # required fields (e.g. base_url) and leave the poller to KeyError.
+        definition = db.get(ConnectorDefinition, connector.connector_definition_id)
+        if definition is not None:
+            _validate_config(definition.config_schema, body.config)
         connector.config = body.config
     if body.schedule_cron is not None:
         connector.schedule_cron = body.schedule_cron
     if body.status is not None:
-        if body.status not in ("active", "paused", "error"):
-            raise HTTPException(422, "status must be active|paused|error")
+        if body.status not in ConnectorStatus:
+            raise HTTPException(422, f"status must be one of {', '.join(ConnectorStatus)}")
         connector.status = body.status
     db.flush()
     return _to_out(connector)

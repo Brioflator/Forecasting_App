@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from api.deps import DbDep, PrincipalDep
+from api.deps import DbDep, OwnedConnectorDep, OwnedMetricDep, PrincipalDep
 from api.schemas import (
     AnomalyOut,
     DataPointOut,
@@ -22,7 +22,8 @@ from api.schemas import (
     MetricUpdate,
 )
 from api.serializers import run_to_out
-from shared.db.models import Anomaly, Connector, DataPoint, ForecastRun, Metric
+from shared.db.models import Anomaly, DataPoint, ForecastRun, Metric
+from shared.domain import ModelType, RunStatus
 
 router = APIRouter(tags=["metrics"])
 
@@ -38,35 +39,12 @@ def _metric_out(m: Metric) -> MetricOut:
     )
 
 
-def _owned_connector(db: DbDep, org_id: str, connector_id: uuid.UUID) -> Connector:
-    connector = db.scalar(
-        select(Connector).where(
-            Connector.id == connector_id, Connector.organization_id == uuid.UUID(org_id)
-        )
-    )
-    if connector is None:
-        raise HTTPException(404, "connector not found")
-    return connector
-
-
-def _owned_metric(db: DbDep, org_id: str, metric_id: uuid.UUID) -> Metric:
-    metric = db.scalar(
-        select(Metric).where(Metric.id == metric_id, Metric.organization_id == uuid.UUID(org_id))
-    )
-    if metric is None:
-        raise HTTPException(404, "metric not found")
-    return metric
-
-
 @router.post("/connectors/{connector_id}/metrics", response_model=MetricOut, status_code=201)
-def create_metric(
-    connector_id: uuid.UUID, body: MetricCreate, db: DbDep, principal: PrincipalDep
-) -> MetricOut:
-    connector = _owned_connector(db, principal.org_id, connector_id)
+def create_metric(body: MetricCreate, connector: OwnedConnectorDep, db: DbDep) -> MetricOut:
     if db.scalar(select(Metric).where(Metric.connector_id == connector.id, Metric.key == body.key)):
         raise HTTPException(409, f"metric key already exists on this connector: {body.key}")
     metric = Metric(
-        organization_id=uuid.UUID(principal.org_id),
+        organization_id=connector.organization_id,
         connector_id=connector.id,
         name=body.name,
         key=body.key,
@@ -80,10 +58,9 @@ def create_metric(
 
 
 @router.get("/connectors/{connector_id}/metrics", response_model=list[MetricOut])
-def list_metrics(connector_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> list[MetricOut]:
-    _owned_connector(db, principal.org_id, connector_id)
+def list_metrics(connector: OwnedConnectorDep, db: DbDep) -> list[MetricOut]:
     rows = db.scalars(
-        select(Metric).where(Metric.connector_id == connector_id).order_by(Metric.created_at)
+        select(Metric).where(Metric.connector_id == connector.id).order_by(Metric.created_at)
     ).all()
     return [_metric_out(m) for m in rows]
 
@@ -146,15 +123,12 @@ def list_all_metrics(db: DbDep, principal: PrincipalDep) -> list[MetricListItemO
 
 
 @router.get("/metrics/{metric_id}", response_model=MetricOut)
-def get_metric(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> MetricOut:
-    return _metric_out(_owned_metric(db, principal.org_id, metric_id))
+def get_metric(metric: OwnedMetricDep) -> MetricOut:
+    return _metric_out(metric)
 
 
 @router.patch("/metrics/{metric_id}", response_model=MetricOut)
-def update_metric(
-    metric_id: uuid.UUID, body: MetricUpdate, db: DbDep, principal: PrincipalDep
-) -> MetricOut:
-    metric = _owned_metric(db, principal.org_id, metric_id)
+def update_metric(body: MetricUpdate, metric: OwnedMetricDep, db: DbDep) -> MetricOut:
     if body.name is not None:
         metric.name = body.name
     if body.unit is not None:
@@ -167,20 +141,17 @@ def update_metric(
 
 
 @router.delete("/metrics/{metric_id}", status_code=204)
-def delete_metric(metric_id: uuid.UUID, db: DbDep, principal: PrincipalDep) -> None:
-    metric = _owned_metric(db, principal.org_id, metric_id)
+def delete_metric(metric: OwnedMetricDep, db: DbDep) -> None:
     db.delete(metric)  # data_points/forecast_runs/eda_reports cascade via FK
 
 
 @router.get("/metrics/{metric_id}/forecasts", response_model=list[ForecastRunSummaryOut])
 def list_metric_forecasts(
-    metric_id: uuid.UUID,
+    metric: OwnedMetricDep,
     db: DbDep,
-    principal: PrincipalDep,
     limit: int = Query(10, ge=1, le=50),
 ) -> list[ForecastRunSummaryOut]:
     """Forecast history, newest first — lets the UI reload the latest result."""
-    metric = _owned_metric(db, principal.org_id, metric_id)
     runs = db.scalars(
         select(ForecastRun)
         .where(ForecastRun.metric_id == metric.id)
@@ -191,6 +162,7 @@ def list_metric_forecasts(
     out = []
     for run in runs:
         params = run.model_params if isinstance(run.model_params, dict) else {}
+        metrics_blob = params.get("metrics") or {}
         out.append(
             ForecastRunSummaryOut(
                 id=run.id,
@@ -203,6 +175,8 @@ def list_metric_forecasts(
                 completed_at=run.completed_at,
                 warning=params.get("warning"),
                 error_message=run.error_message,
+                low_confidence=run.low_confidence,
+                cv_mase=metrics_blob.get("cv_mase") if isinstance(metrics_blob, dict) else None,
             )
         )
     return out
@@ -210,12 +184,10 @@ def list_metric_forecasts(
 
 @router.get("/metrics/{metric_id}/anomalies", response_model=list[AnomalyOut])
 def list_metric_anomalies(
-    metric_id: uuid.UUID,
+    metric: OwnedMetricDep,
     db: DbDep,
-    principal: PrincipalDep,
     limit: int = Query(50, ge=1, le=200),
 ) -> list[AnomalyOut]:
-    metric = _owned_metric(db, principal.org_id, metric_id)
     rows = db.scalars(
         select(Anomaly)
         .where(Anomaly.metric_id == metric.id)
@@ -239,12 +211,10 @@ def list_metric_anomalies(
 
 @router.get("/metrics/{metric_id}/data", response_model=MetricDataOut)
 def get_metric_data(
-    metric_id: uuid.UUID,
+    metric: OwnedMetricDep,
     db: DbDep,
-    principal: PrincipalDep,
     limit: int = Query(1000, ge=1, le=10000),
 ) -> MetricDataOut:
-    metric = _owned_metric(db, principal.org_id, metric_id)
     # Newest `limit` points, returned oldest→newest. ASC+limit would return the
     # OLDEST window once a metric outgrows the limit, pairing ancient actuals
     # with a fresh forecast in the UI (same pattern as worker._load_series).
@@ -265,22 +235,19 @@ def get_metric_data(
 
 
 @router.post("/metrics/{metric_id}/forecast", response_model=ForecastRunOut, status_code=202)
-def enqueue_forecast(
-    metric_id: uuid.UUID, body: ForecastCreate, db: DbDep, principal: PrincipalDep
-) -> ForecastRunOut:
+def enqueue_forecast(body: ForecastCreate, metric: OwnedMetricDep, db: DbDep) -> ForecastRunOut:
     """Insert a pending forecast_runs row — the row IS the job (doc 1 §5.4).
     `worker` polls pending rows, calls `ml`, and writes the result back."""
-    metric = _owned_metric(db, principal.org_id, metric_id)
     if body.horizon < 1:
         raise HTTPException(422, "horizon must be >= 1")
-    if body.model not in ("auto", "sarima", "ets", "prophet"):
-        raise HTTPException(422, "unknown model")
+    if body.model not in ModelType:
+        raise HTTPException(422, f"unknown model (expected one of {', '.join(ModelType)})")
     run = ForecastRun(
-        organization_id=uuid.UUID(principal.org_id),
+        organization_id=metric.organization_id,
         metric_id=metric.id,
         model_type=body.model,
         horizon=body.horizon,
-        status="pending",
+        status=RunStatus.PENDING,
     )
     db.add(run)
     db.flush()

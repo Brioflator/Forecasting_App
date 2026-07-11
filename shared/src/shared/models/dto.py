@@ -29,8 +29,32 @@ class ForecastPoint(BaseModel):
     upper: float
 
 
+class FoldScore(BaseModel):
+    """One rolling-origin CV fold's error for one candidate (guide §4 step 4)."""
+
+    fold: int
+    cutoff: datetime
+    mase: float | None = None
+    smape: float | None = None
+    rmse: float | None = None
+
+
+class CandidateScore(BaseModel):
+    """Backtest summary for one candidate model across all folds."""
+
+    model: str
+    mean_mase: float | None = None
+    mean_smape: float | None = None
+    mean_rmse: float | None = None
+    folds: list[FoldScore] = Field(default_factory=list)
+
+
 class ForecastResponse(BaseModel):
-    """POST /forecast success body (doc 3 §2)."""
+    """POST /forecast success body (doc 3 §2).
+
+    Trust-surfacing fields (guide §4 step 6) are additive with defaults so an
+    old worker against a new ml (or the reverse) keeps working during rollout.
+    """
 
     model: str  # the model ACTUALLY used (may differ from request on fallback)
     model_params: dict[str, Any]
@@ -38,6 +62,12 @@ class ForecastResponse(BaseModel):
     points: list[ForecastPoint]
     metrics: dict[str, float]
     warning: str | None = None
+    route: str | None = None  # diagnostics route taken (auto mode only)
+    candidates: list[CandidateScore] | None = None  # per-candidate CV scores
+    low_confidence: bool = False
+    confidence_reasons: list[str] = Field(default_factory=list)
+    series_profile: dict[str, Any] | None = None
+    fit_config: dict[str, Any] | None = None  # deterministic re-fit recipe
 
 
 class ForecastError(BaseModel):
@@ -46,6 +76,7 @@ class ForecastError(BaseModel):
     error: str
     detail: str
     min_required: int
+    reason: str | None = None  # machine-readable gate slug, e.g. "horizon_too_long"
 
 
 class EdaRequest(BaseModel):

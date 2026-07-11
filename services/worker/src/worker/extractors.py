@@ -14,6 +14,7 @@ from jsonpath_ng import parse as jsonpath_parse
 
 from shared.models import Point
 from worker.cadence import quantize_to_cadence
+from worker.ssrf import assert_public_url
 
 
 class Extractor(Protocol):
@@ -33,8 +34,13 @@ class GenericRestExtractor:
     The secret is injected into the auth header here and never stored (guide §7).
     """
 
-    def __init__(self, client: httpx.Client | None = None):
+    def __init__(self, client: httpx.Client | None = None, *, allow_private_hosts: bool = False):
         self._client = client or httpx.Client(timeout=15.0)
+        # The SSRF guard protects the real egress client. An injected client is a
+        # test/programmatic seam that never touches the real network, so it
+        # bypasses the guard; `allow_private_hosts` opts the real client out too,
+        # for self-hosted deployments whose sources genuinely live on-network.
+        self._guard_ssrf = client is None and not allow_private_hosts
 
     def _auth_headers(self, config: dict, secret: str | None) -> dict[str, str]:
         if not secret:
@@ -45,6 +51,8 @@ class GenericRestExtractor:
         return {header: value}
 
     def fetch(self, config: dict, secret: str | None, cadence: str | None) -> list[Point]:
+        if self._guard_ssrf:
+            assert_public_url(config["base_url"])
         resp = self._client.get(config["base_url"], headers=self._auth_headers(config, secret))
         resp.raise_for_status()
         body = resp.json()
@@ -74,11 +82,14 @@ def get_extractor(key: str) -> Extractor:
 
 
 def default_registry() -> dict[str, Extractor]:
-    if "generic_rest" not in _REGISTRY:
-        register_extractor("generic_rest", GenericRestExtractor())
-    if "braze" not in _REGISTRY:
-        # Braze's pull path is REST + JSONPath — the generic extractor with
-        # braze.yaml's defaults covers it; a bespoke extractor is only needed
-        # if pagination/windowing ever gets added.
-        register_extractor("braze", GenericRestExtractor())
+    # Every connector whose pull path is "GET a URL, pull a numeric value out of
+    # the JSON by JSONPath" shares one GenericRestExtractor; the connector's YAML
+    # supplies the URL and value_path. A bespoke extractor is only needed for a
+    # source that pages/windows its API (none of these do).
+    from shared.settings import get_settings
+
+    shared = GenericRestExtractor(allow_private_hosts=get_settings().connector_allow_private_hosts)
+    for key in ("generic_rest", "braze", "coingecko", "open_meteo", "frankfurter"):
+        if key not in _REGISTRY:
+            register_extractor(key, shared)
     return _REGISTRY
