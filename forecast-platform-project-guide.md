@@ -1,5 +1,14 @@
 # Forecast Platform — Project Guide & Build Specification
 
+> **Status note (2026-07): the local product this guide specifies is built.**
+> POC (§8) and MVP (§9) are complete, plus the anomaly/notification/dashboard
+> layer §11 sketched as v2.x. Deployment (§10) is intentionally not started.
+> This guide remains the authoritative record of the product rationale and the
+> database schema; the current-state implementation reference is
+> [`docs/`](docs/README.md). Known drift from §4.2/§8: the forecasting stack
+> is StatsForecast (AutoARIMA/AutoETS/AutoTheta/Croston), not
+> `pmdarima`/`prophet` — see [`docs/ml.md`](docs/ml.md).
+
 > **Purpose of this document.** This is a self-contained build specification consolidating a product discovery conversation into something an AI coding assistant (e.g. Claude via Claude Code) can use as project context to start implementation. If you are an AI assistant reading this to bootstrap work: start with **Section 8 (POC Requirement Sheet)** for scope, then follow **`05-implementation-plan.md`** for the dependency-ordered build sequence and the last-mile specs (provider interfaces, config surface, `ml` helper algorithms, demo data source) — it's the actionable entry point. Sections 1–7 give you the "why" behind the decisions so you don't re-litigate them. Sections 9–11 tell you where this is headed so you don't paint the codebase into a corner. **Deployment (Section 10) is intentionally sequenced after the MVP — do not start on it until the app is fully functional locally.**
 
 **Owner:** Alexandru

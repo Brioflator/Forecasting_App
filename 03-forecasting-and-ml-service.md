@@ -1,5 +1,19 @@
 # Forecast Platform — Build Guide 3: The Forecasting / ML Service
 
+> **⚠ Partially superseded — read [`docs/ml.md`](docs/ml.md) for the current
+> implementation.** This document is the original specification the service
+> was built from, and its principles (stateless purity, robustness over
+> sophistication, never-hard-fail, the minimum-length thresholds, the
+> regularization rules, §7b's resource guards) still hold. What changed since:
+> the pmdarima/statsmodels "ladder" described in §3/§6/§8 was replaced by a
+> **StatsForecast (Nixtla) model zoo selected by rolling-origin
+> cross-validation** (profile → route → backtest → humble selection → fit),
+> pmdarima was removed entirely, and the response now carries a trust layer
+> (`low_confidence`, `confidence_reasons`, `route`, `candidates`,
+> `series_profile`, `fit_config`). The statsmodels ladder survives only as the
+> `FORECAST_ENGINE=legacy` fallback and the naive floor. Where this file and
+> `docs/ml.md` disagree, `docs/ml.md` is right.
+
 > **What this document is.** The authoritative specification for the `ml` service — the stateless forecasting core that is the product's actual value proposition. Documents 1 and 2 treat `ml` as a black box behind a two-endpoint contract (`/forecast`, `/eda`); this document is what's inside the box. It exists because the earlier drafts repeatedly deferred to "the SARIMA logic already built during coursework," which is an external reference, not a spec — so the core of the product was effectively a stub. This closes that gap.
 >
 > Consistent with `forecast-platform-project-guide.md` ("the guide") and the two build docs ("doc 1", "doc 2"). Depends on the schema addenda in doc 1 §12 (notably `metrics.seasonal_period` and `metrics.key`).

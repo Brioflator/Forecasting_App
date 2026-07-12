@@ -1,5 +1,13 @@
 # Forecast Platform — Build Guide 1: Local / Open-Source Edition
 
+> **Status: built.** This is the original build specification; the local
+> edition it describes now exists and its architecture matches this document.
+> For the current-state reference (including details that evolved during the
+> build — the ml engine is now StatsForecast-based rather than
+> pmdarima/prophet, the connector catalog grew live-API sources, anomaly
+> detection and notifications shipped) see [`docs/`](docs/README.md). Where
+> this file and `docs/` disagree, `docs/` is right.
+
 > **Read this first.** This is the first of two build documents. It covers building and running the entire platform **locally**, as the open-source, self-hostable edition — the thing a community contributor clones and runs with one command. The second document (`02-deploy-production.md`) covers taking this same codebase to a hosted production deployment, and is deliberately written to be tackled **only after** everything here works. Do not read them out of order: the production doc assumes the local build exists and repeatedly refers back to it.
 >
 > This document is derived from and stays consistent with `forecast-platform-project-guide.md` (the master spec). Where this doc says "the guide," it means that file. Section numbers in cross-references (e.g. "guide §5.2") point there.
@@ -373,6 +381,12 @@ make up                       # docker compose up: pg, redis, api, worker, ml, f
 make seed                     # loads connector_definitions + a demo REST connector
 # open http://localhost:3000 — add a metric, watch data accumulate, request a forecast, export it
 ```
+
+The demo connector polls the api's own `/dev/sample-metric` endpoint, which the
+worker's SSRF guard would normally reject as a non-public host. The guard's
+`CONNECTOR_ALLOW_PRIVATE_HOSTS` knob therefore defaults **true when
+`APP_EDITION=local`** (a trusted self-hosted install) and **false in
+production**; set it explicitly to override either way (see `.env.example`).
 
 Running the agent (the credential-isolation path) is a separate, documented step:
 ```bash

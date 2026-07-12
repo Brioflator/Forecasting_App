@@ -1,5 +1,14 @@
 # Forecast Platform — Build Guide 4: The Frontend
 
+> **Status: built.** The frontend this document specifies now exists —
+> including the botanical design system (§2b), the bento dashboard (§7b), and
+> the schema-driven wizard (§6). This file remains the authoritative **design
+> spec** (palette, contrast rules, motion rules, ADRs); the current-state
+> implementation reference is [`docs/frontend.md`](docs/frontend.md). One
+> deliberate divergence from §2: data fetching uses a small hand-rolled typed
+> client (`frontend/lib/api.ts`) rather than TanStack Query — the polling
+> loops proved small enough not to warrant the dependency.
+
 > **What this document is.** The specification for the Next.js frontend — the connector setup wizard, dataset list, forecast/EDA visualization, and export UI that docs 1–2 refer to as "minimal Next.js" without ever specifying. That one phrase is actually a whole workstream; this document gives it direction at the same depth as the other build docs.
 >
 > Consistent with `forecast-platform-project-guide.md` ("the guide"), doc 1 (local build), doc 2 (deploy), and doc 3 (ml service). The frontend talks **only to the `api` service** (doc 1 §5.2) — never directly to `worker`, `ml`, or (with one narrow exception, §4) the database.
