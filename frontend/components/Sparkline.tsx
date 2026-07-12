@@ -8,11 +8,16 @@ export default function Sparkline({
   width = 120,
   height = 28,
   className = "text-hunter",
+  stretch = false,
 }: {
   values: number[];
   width?: number;
   height?: number;
   className?: string;
+  /** Fill the parent instead of rendering at a fixed pixel size: the svg
+   *  scales non-uniformly to 100% width/height (stroke width preserved via
+   *  vector-effect). Size it with the className (e.g. `h-full w-full`). */
+  stretch?: boolean;
 }) {
   if (values.length < 2) {
     return <span className="text-xs text-ink/30">–</span>;
@@ -30,7 +35,13 @@ export default function Sparkline({
     coords.length - 1
   ][0].toFixed(1)},${(height - 1).toFixed(1)}`;
   return (
-    <svg width={width} height={height} aria-hidden="true" className={className}>
+    <svg
+      {...(stretch
+        ? { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "none" }
+        : { width, height })}
+      aria-hidden="true"
+      className={className}
+    >
       <polygon points={fillPoints} fill="currentColor" fillOpacity={0.12} stroke="none" />
       <polyline
         points={points}
@@ -39,6 +50,7 @@ export default function Sparkline({
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
+        {...(stretch ? { vectorEffect: "non-scaling-stroke" } : {})}
       />
     </svg>
   );

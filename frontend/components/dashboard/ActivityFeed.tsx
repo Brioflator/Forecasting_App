@@ -7,7 +7,7 @@
 // grows an ASCII sprout instead of a bare sentence.
 
 import Link from "next/link";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { ArrowRight } from "@phosphor-icons/react";
 import type { NotificationItem } from "@/lib/types";
 import { staggerContainer, rise } from "@/lib/motion";
@@ -32,11 +32,16 @@ function describe(n: NotificationItem): string {
 }
 
 export function ActivityFeed({ notifications }: { notifications: NotificationItem[] }) {
+  const reduceMotion = useReducedMotion();
   const recent = notifications.slice(0, 6);
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-sage/20 bg-surface shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg">
-      <div className="flex items-center justify-between border-b border-sage/20 px-5 py-4">
+    <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-sage/20 bg-surface shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg">
+      <div
+        aria-hidden="true"
+        className="contour-bg pointer-events-none absolute inset-0 opacity-50"
+      />
+      <div className="relative flex items-center justify-between border-b border-sage/20 px-5 py-4">
         <h2 className="text-sm font-semibold text-pine">Recent activity</h2>
         <Link
           href="/notifications"
@@ -51,7 +56,7 @@ export function ActivityFeed({ notifications }: { notifications: NotificationIte
         </Link>
       </div>
       {recent.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
           <AsciiArt
             art={ASCII_SPROUT}
             className="text-[11px] leading-[13px] text-sage"
@@ -61,17 +66,22 @@ export function ActivityFeed({ notifications }: { notifications: NotificationIte
           </p>
         </div>
       ) : (
-        <motion.ul variants={staggerContainer} className="flex-1 divide-y divide-sage/10">
+        <motion.ul
+          initial={reduceMotion ? false : "hidden"}
+          animate="visible"
+          variants={staggerContainer}
+          className="relative flex-1 divide-y divide-sage/10"
+        >
           {recent.map((n) => (
             <motion.li
               key={n.id}
               variants={rise}
               className="flex items-center justify-between gap-4 px-5 py-3 text-sm transition-colors duration-200 hover:bg-sage/5"
             >
-              <span className={n.read_at ? "text-ink/60" : "font-semibold text-ink"}>
+              <span className={n.read_at ? "text-ink/70" : "font-semibold text-ink"}>
                 {describe(n)}
               </span>
-              <span className="shrink-0 font-mono text-xs tabular-nums text-ink/40">
+              <span className="shrink-0 font-mono text-xs tabular-nums text-ink/50">
                 {new Date(n.created_at).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",

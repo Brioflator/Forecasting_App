@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { GeistSans } from "geist/font/sans";
+import { Labrada } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
 import { Plant, Plus, List } from "@phosphor-icons/react/dist/ssr";
 
@@ -19,6 +19,13 @@ import { Toaster } from "@/components/ui/sonner";
 import { getSession } from "@/lib/auth";
 import "./globals.css";
 
+// Labrada (Omnibus-Type) is the app-wide face; Geist Mono stays for numerals
+// and code so tabular figures keep lining up.
+const labrada = Labrada({
+  subsets: ["latin"],
+  variable: "--font-labrada",
+});
+
 export const metadata: Metadata = {
   title: "Forecast Platform",
   description: "Configure metrics, collect data on a schedule, get forecasts.",
@@ -31,13 +38,13 @@ export default function RootLayout({
 }) {
   const session = getSession();
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    <html lang="en" className={`${labrada.variable} ${GeistMono.variable}`}>
       <body className="font-sans">
         <TooltipProvider delayDuration={300}>
-          <div className="flex min-h-screen bg-canvas">
+          <div className="flex min-h-screen">
             <AppSidebar />
             <div className="flex min-w-0 flex-1 flex-col">
-              <header className="flex items-center justify-between gap-4 border-b border-sage/20 bg-surface px-6 py-4 lg:px-10">
+              <header className="flex items-center justify-between gap-4 border-b border-sage/20 bg-surface/75 px-6 py-4 backdrop-blur-md lg:px-10">
                 <div className="flex items-center gap-3">
                   <Sheet>
                     <SheetTrigger asChild>

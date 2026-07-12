@@ -11,6 +11,17 @@
         "NEXT_PUBLIC_APP_EDITION": "local",
         "NEXT_PUBLIC_API_URL": "http://localhost:8000"
       }
+    },
+    {
+      "name": "frontend-3100",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--", "-p", "3100"],
+      "cwd": "frontend",
+      "port": 3100,
+      "env": {
+        "NEXT_PUBLIC_APP_EDITION": "local",
+        "NEXT_PUBLIC_API_URL": "http://localhost:8000"
+      }
     }
   ]
 }

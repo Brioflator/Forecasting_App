@@ -53,7 +53,7 @@ export function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
 export default function AppSidebar() {
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-sage/20 lg:bg-surface">
+    <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-sage/20 lg:bg-surface/75 lg:backdrop-blur-md">
       <div className="flex items-center gap-2 px-6 py-6">
         <Plant size={24} weight="regular" className="text-hunter" />
         <span className="text-lg font-semibold text-pine">Forecast</span>

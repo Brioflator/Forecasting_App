@@ -52,6 +52,22 @@
 
 body {
   @apply bg-canvas text-ink antialiased;
+  /* Stacked-waves backdrop across the whole app: warm greys one step below
+     canvas, fixed so it never scrolls with content. The canvas color stays
+     underneath as the fallback while the SVG loads. */
+  background-image: url("/backgrounds/stacked-waves.svg");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+/* Topographic contour-line backdrop for the dashboard cards. Dust-colored
+   strokes, so it stays a texture behind ink text; apply on an absolutely
+   positioned, aria-hidden layer inside an overflow-hidden card. */
+.contour-bg {
+  background-image: url("/backgrounds/contour-lines.svg");
+  background-size: cover;
+  background-position: center;
 }
 
 /* Warm paper grain over the whole canvas (doc 4 §2b "botanical" feel): a
@@ -65,24 +81,6 @@ body::after {
   pointer-events: none;
   opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* Ambient sway for the featured tile's fern frond: transform-only, slow,
-   and fully disabled under reduced motion (entrance animation is separately
-   gated in the component via useReducedMotion). */
-@media (prefers-reduced-motion: no-preference) {
-  .frond-sway {
-    animation: frond-sway 9s ease-in-out infinite alternate;
-    transform-origin: 20% 95%;
-  }
-}
-@keyframes frond-sway {
-  from {
-    transform: rotate(-1.4deg);
-  }
-  to {
-    transform: rotate(1.2deg);
-  }
 }
 
 /* Theme for the RJSF-generated wizard form (ADR-006: the bounded, one-time

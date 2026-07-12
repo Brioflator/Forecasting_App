@@ -40,10 +40,14 @@ export function ForecastPreviewTile({ data }: { data: ForecastPreviewData | null
   if (!data) {
     return (
       <Link href="/metrics" className="block h-full">
-        <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border border-sage/20 bg-surface p-6 text-center shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]">
-          <AsciiArt art={ASCII_SPROUT} className="text-[11px] leading-[13px] text-sage" />
-          <p className="text-sm font-medium text-ink">No forecasts yet</p>
-          <p className="text-xs text-ink/50">
+        <div className="relative flex h-full min-h-[240px] flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-sage/20 bg-surface p-6 text-center shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]">
+          <div
+            aria-hidden="true"
+            className="contour-bg pointer-events-none absolute inset-0 opacity-60"
+          />
+          <AsciiArt art={ASCII_SPROUT} className="relative text-[11px] leading-[13px] text-sage" />
+          <p className="relative text-sm font-medium text-ink">No forecasts yet</p>
+          <p className="relative text-xs text-ink/65">
             Run a forecast on a metric to see a preview here.
           </p>
           <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-hunter">
@@ -56,17 +60,21 @@ export function ForecastPreviewTile({ data }: { data: ForecastPreviewData | null
 
   return (
     <Link href={`/metrics/${data.metricId}`} className="block h-full">
-      <div className="flex h-full min-h-[240px] flex-col rounded-2xl border border-sage/20 bg-surface p-5 shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]">
-        <div className="flex items-center justify-between">
+      <div className="relative flex h-full min-h-[240px] flex-col overflow-hidden rounded-2xl border border-sage/20 bg-surface p-5 shadow-tinted transition-all duration-200 hover:-translate-y-[2px] hover:shadow-tinted-lg active:scale-[0.98]">
+        <div
+          aria-hidden="true"
+          className="contour-bg pointer-events-none absolute inset-0 opacity-60"
+        />
+        <div className="relative flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-pine">{data.metricName}</p>
-            <p className="text-xs text-ink/50">{data.modelLabel}</p>
+            <p className="text-xs text-ink/65">{data.modelLabel}</p>
           </div>
           <span className="inline-flex items-center gap-1 text-xs font-medium text-hunter">
             View <ArrowRight size={14} weight="regular" />
           </span>
         </div>
-        <div className="mt-2 min-h-0 flex-1">
+        <div className="relative mt-2 min-h-0 flex-1">
           <ResponsiveContainer width="100%" height="100%" minHeight={100}>
             <ComposedChart data={data.rows} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               {/* Hidden numeric axes: keeps the tile sparkline-clean while
