@@ -6,7 +6,9 @@ and the compose file.
 """
 
 from functools import lru_cache
+from typing import Any
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,9 +65,12 @@ class Settings(BaseSettings):
     # how often the worker re-syncs pull jobs against the connectors table, so
     # wizard-created connectors start polling without a restart
     connector_sync_interval_seconds: float = 30
-    # SSRF guard: pull connectors may only fetch globally-routable hosts. Set
-    # True only for trusted self-hosted deployments whose sources live on the
-    # internal network (worker/ssrf.py).
+    # SSRF guard: pull connectors may only fetch globally-routable hosts
+    # (worker/ssrf.py). Defaults by edition (_default_private_hosts_by_edition):
+    # the local edition is a trusted self-hosted install whose bundled demo
+    # connector polls this API's own localhost endpoint, so it defaults True;
+    # production stays False. An explicit CONNECTOR_ALLOW_PRIVATE_HOSTS
+    # always wins.
     connector_allow_private_hosts: bool = False
     # anomaly detection (guide §5.7, v2.x pulled into the local product):
     # actuals outside the latest forecast's confidence band → anomalies rows
@@ -90,6 +95,17 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     supabase_jwt_secret: str | None = None
     kafka_brokers: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_private_hosts_by_edition(cls, values: Any) -> Any:
+        # Runs on the merged sources (env, .env, init kwargs), so the key is
+        # absent only when nothing set it explicitly — the declared field
+        # default above never applies and exists as a production-safe fallback.
+        if isinstance(values, dict) and "connector_allow_private_hosts" not in values:
+            edition = str(values.get("app_edition", "local")).lower()
+            values["connector_allow_private_hosts"] = edition == "local"
+        return values
 
 
 @lru_cache

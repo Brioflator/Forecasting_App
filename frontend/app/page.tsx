@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { BentoGrid, BentoTile } from "@/components/dashboard/BentoGrid";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
-import { AsciiArt, ASCII_MEADOW } from "@/components/dashboard/BotanicalArt";
+import Sparkline from "@/components/Sparkline";
 import { FeaturedTile } from "@/components/dashboard/FeaturedTile";
 import { KpiTile } from "@/components/dashboard/KpiTile";
 import {
@@ -172,6 +172,9 @@ export default async function DashboardPage() {
 
   const forecastPreview = await loadForecastPreview(metrics).catch(() => null);
   const featuredSparkline = metrics.find((m) => m.spark && m.spark.length >= 2)?.spark;
+  // Wide "Metrics tracked" tile: fill its right edge with the freshest
+  // metrics' sparklines instead of leaving the space empty.
+  const sparkMetrics = metrics.filter((m) => m.spark && m.spark.length >= 2).slice(0, 3);
 
   return (
     <div className="space-y-8">
@@ -179,7 +182,7 @@ export default async function DashboardPage() {
 
       <BentoGrid>
         {/* Featured KPI: 4 cols x 2 rows, pine-teal dark surface */}
-        <BentoTile colSpan={4} rowSpan={2}>
+        <BentoTile colSpan={4} rowSpan={2} index={0}>
           <FeaturedTile
             dataPoints={stats.data_points}
             pointsLast24h={stats.points_last_24h}
@@ -188,12 +191,12 @@ export default async function DashboardPage() {
         </BentoTile>
 
         {/* Forecast preview: 5 cols x 2 rows, white */}
-        <BentoTile colSpan={5} rowSpan={2}>
+        <BentoTile colSpan={5} rowSpan={2} index={1}>
           <ForecastPreviewTile data={forecastPreview} />
         </BentoTile>
 
         {/* Open anomalies: 3 cols, paprika-tinted when > 0 */}
-        <BentoTile colSpan={3}>
+        <BentoTile colSpan={3} index={2}>
           <KpiTile
             label="Open anomalies"
             value={stats.open_anomalies}
@@ -205,23 +208,27 @@ export default async function DashboardPage() {
         </BentoTile>
 
         {/* Active agents: 3 cols, white */}
-        <BentoTile colSpan={3}>
+        <BentoTile colSpan={3} index={3}>
           <KpiTile
             label="Active agents"
             value={stats.agents_active}
             href="/agents"
             icon={<Robot size={20} weight="regular" />}
+            subtext="Push agents online"
           />
         </BentoTile>
 
         {/* Connectors: 3 cols, sage-tinted, error badge when any errored */}
-        <BentoTile colSpan={3}>
+        <BentoTile colSpan={3} index={4}>
           <KpiTile
             label="Connectors"
             value={stats.connectors}
             href="/connectors"
             icon={<Plugs size={20} weight="regular" />}
             tone="sage"
+            subtext={
+              stats.connectors_error > 0 ? undefined : "All collecting on schedule"
+            }
             badge={
               stats.connectors_error > 0 ? `${stats.connectors_error} in error` : undefined
             }
@@ -229,33 +236,49 @@ export default async function DashboardPage() {
         </BentoTile>
 
         {/* Forecasts completed: 3 cols, white */}
-        <BentoTile colSpan={3}>
+        <BentoTile colSpan={3} index={5}>
           <KpiTile
             label="Forecasts completed"
             value={stats.forecast_runs_completed}
             href="/metrics"
             icon={<ChartLineUp size={20} weight="regular" />}
+            subtext="Across all metrics"
           />
         </BentoTile>
 
         {/* Recent activity: 6 cols, tall, white */}
-        <BentoTile colSpan={6} rowSpan={2}>
+        <BentoTile colSpan={6} rowSpan={2} index={6}>
           <ActivityFeed notifications={notifications} />
         </BentoTile>
 
-        {/* Metrics tracked: 6 cols, white — closes the last row against the tall
-            activity tile; the wide right edge carries the ASCII meadow. */}
-        <BentoTile colSpan={6}>
+        {/* Metrics tracked: 6 cols, white — closes the last row against the
+            tall activity tile; the wide right edge carries live sparklines
+            for the freshest metrics. */}
+        <BentoTile colSpan={6} index={7}>
           <KpiTile
             label="Metrics tracked"
             value={stats.metrics}
             href="/metrics"
             icon={<Database size={20} weight="regular" />}
-            decoration={
-              <AsciiArt
-                art={ASCII_MEADOW}
-                className="absolute bottom-4 right-5 hidden text-[9px] leading-[11px] text-ink/15 md:block"
-              />
+            subtext={sparkMetrics.length > 0 ? "Latest series" : undefined}
+            aside={
+              sparkMetrics.length > 0 ? (
+                <div className="flex flex-col gap-2.5">
+                  {sparkMetrics.map((m) => (
+                    <div key={m.id} className="flex items-center justify-end gap-3">
+                      <span className="max-w-36 truncate text-xs font-medium text-ink/70">
+                        {m.name}
+                      </span>
+                      <Sparkline
+                        values={m.spark}
+                        width={110}
+                        height={22}
+                        className="shrink-0 text-hunter/80"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : undefined
             }
           />
         </BentoTile>

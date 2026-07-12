@@ -1,12 +1,20 @@
 # Forecast Platform
 
 Self-hostable metric collection + forecasting: configure a connector, collect
-data on a schedule, get a SARIMA/ETS forecast with confidence intervals, export
-it. Local, open-source edition — no cloud account required.
+data on a schedule, and get a forecast with confidence intervals and an honest
+trust verdict. Each series is routed to a StatsForecast model zoo
+(AutoARIMA / AutoETS / AutoTheta / Croston+TSB, plus naive baselines),
+candidates are backtested with rolling-origin cross-validation, and the
+response carries an explicit `low_confidence` flag when the winner didn't earn
+its keep. Local, open-source edition — no cloud account required.
 
-Reference docs: [`forecast-platform-project-guide.md`](forecast-platform-project-guide.md)
-(the master spec), build guides `01`–`05` (local build, deploy, ml service,
-frontend, implementation plan).
+Documentation:
+
+- **[`docs/`](docs/README.md) — the current-state reference** (architecture,
+  ml, api, worker, connectors + agent, frontend, development). Start here.
+- [`forecast-platform-project-guide.md`](forecast-platform-project-guide.md)
+  and build guides `01`–`05` — the original design specs and decision records
+  (the *why*); where they and the code disagree, `docs/` is right.
 
 ## Quickstart
 
@@ -24,7 +32,9 @@ make seed                     # demo connector + metric + 48-point backfill
 The seeded demo is fully offline: the `api` ships a local-only
 `GET /dev/sample-metric` endpoint emitting a fixed period-12 sinusoid; the
 seeded connector polls it every minute, and the 48-point backfill means a real
-SARIMA forecast is available immediately — no waiting for data to accumulate.
+seasonal forecast is available immediately — no waiting for data to accumulate.
+`make seed-live` adds real free-API connectors (CoinGecko, Open-Meteo,
+Frankfurter) with real backfilled history, no API keys needed.
 
 ## Services
 
@@ -52,19 +62,23 @@ make regen-golden             # rewrite ml golden fixtures — review the diff!
 ```
 
 Test layout (plan 05 §2.6): `ml` tests are pure in-process (golden files,
-ladder coverage, contract tests — no DB); `api`/`worker` tests run against the
+route coverage, contract tests — no DB); `api`/`worker` tests run against the
 compose Postgres's `forecast_test` database, migrated once and truncated
 between tests. Skipped automatically when `TEST_DATABASE_URL` is unset.
+Full setup details (including running without Docker):
+[`docs/development.md`](docs/development.md).
 
 ## Repository layout
 
 ```
-services/api      FastAPI: CRUD, forecast trigger, export, /dev/sample-metric, seed
-services/worker   scheduler + poller + forecast dispatch + outbox relay
-services/ml       forecasting ladder + EDA (stateless; the product core)
+docs/             current-state documentation — start here
+services/api      FastAPI: CRUD, ingestion ingress, forecast trigger, export, seeds
+services/worker   scheduler + poller + forecast dispatch + outbox relay + anomaly sweep
+services/ml       forecasting pipeline + EDA (stateless; the product core)
 shared/           settings, DTOs, provider seam, SQLAlchemy mapping layer
-migrations/       Alembic runner + hand-authored SQL (0001–0004; 0005/0006 are
-                  intentionally empty placeholders for RLS + partitioning, MVP scope)
+agent/            standalone self-hosted push agent (own README)
+migrations/       Alembic runner + hand-authored SQL (0001–0009, incl. RLS,
+                  partitioning, and the forecast trust columns)
 connectors/       connector definition seeds (YAML) — "connectors are data"
 frontend/         Next.js App Router app
 docker/           compose file + per-service Dockerfiles
@@ -83,8 +97,11 @@ Vercel, which is the next phase):
   upsert + outbox path.
 - **Connectors are data** — `connectors/*.yaml` (generic_rest, braze) drive
   the schema-generated wizard (RJSF) end to end.
-- **Forecast + EDA** — SARIMA/ETS/naive ladder with honest fallback warnings;
-  `/eda` surfaced in the UI with plain-language readings.
+- **Forecast + EDA** — a profiled series is routed to a StatsForecast
+  candidate set, backtested with rolling-origin CV, and the humble winner is
+  fitted with honest intervals; every response carries a trust verdict
+  (`low_confidence` + reasons + per-candidate scores). `/eda` surfaced in the
+  UI with plain-language readings. Deep dive: [`docs/ml.md`](docs/ml.md).
 - **Export** — CSV/JSON/XLSX + shareable expiring links
   (`export_jobs.share_token`, 7-day TTL).
 - **Real event path** — outbox → Redis Streams → auto-forecast-on-ingest

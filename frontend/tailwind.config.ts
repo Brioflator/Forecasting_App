@@ -60,7 +60,9 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
+        // `sans` stays the utility name shadcn/existing markup uses, but the
+        // face is Labrada (a serif) app-wide, per design direction.
+        sans: ["var(--font-labrada)", "Georgia", "serif"],
         mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {

@@ -1,5 +1,15 @@
 # Forecast Platform — Build Guide 5: Implementation Plan & Last-Mile Specs
 
+> **Status: executed.** The POC (§3) and MVP (§4) sequences are complete, plus
+> the full-product layer beyond them (anomaly detection, notifications,
+> dashboard, management UI, trust layer). This file remains useful as the
+> record of the build order and the pinned last-mile decisions (§2's provider
+> signatures, config surface, and ml helper definitions are still accurate,
+> except that the ml engine has since moved from pmdarima to StatsForecast —
+> see [`docs/ml.md`](docs/ml.md)). The next phase is doc 02 (production
+> deployment), which is **intentionally not started**. Current-state
+> reference: [`docs/`](docs/README.md).
+
 > **What this document is.** The autonomous build entry point. Documents 1–4 are *reference specs* organized by concern (why / local / deploy / ml / frontend). This document is the *build order* — a dependency-sequenced task list an implementer follows top-to-bottom — plus the handful of concrete "last-mile" specifics the reference docs left to implementer judgment (the exact provider interface signatures, the enumerated configuration surface, the `ml` helper algorithms, and the demo data source). It exists so a coding agent can implement the whole application without guessing, and without two services guessing *differently*.
 >
 > Consistent with `forecast-platform-project-guide.md` ("the guide"), `01` (local build), `02` (deploy), `03` (ml service), `04` (frontend). Where this document pins a value that "belongs" in an earlier doc, it says so — the pattern doc 1 §12 already established for recorded addenda. **Anything pinned here is a sensible default chosen to be buildable, not doctrine; the maintainer adjusts in refinement.**

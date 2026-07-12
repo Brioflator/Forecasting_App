@@ -1,16 +1,15 @@
 "use client";
 
 // Featured KPI tile (doc 4 §7b): pine-teal dark surface, light text, the
-// count-up "data points collected" number, the 24h delta, and a small
-// sparkline when data is available. A sage fern frond (BotanicalArt) grows in
-// along the right edge on load and sways gently, the one piece of Matisse
-// greenery on the page's one dark surface.
+// count-up "data points collected" number and the 24h delta. The metric's
+// sparkline is the tile's backdrop: a sage area chart pinned to the bottom
+// edge and stretched across the full card width, with the copy sitting
+// on top of it.
 
 import Link from "next/link";
 import { ChartLineUp } from "@phosphor-icons/react";
 import Sparkline from "@/components/Sparkline";
 import { CountUp } from "./CountUp";
-import { FernFrond } from "./BotanicalArt";
 
 export function FeaturedTile({
   dataPoints,
@@ -29,21 +28,31 @@ export function FeaturedTile({
           aria-hidden="true"
           className="pointer-events-none absolute -left-16 -top-16 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(163,177,138,0.28),transparent_70%)]"
         />
-        <FernFrond className="pointer-events-none absolute -right-3 bottom-0 h-[115%] text-sage opacity-60 transition-opacity duration-500 group-hover:opacity-80" />
+        {/* Full-width backdrop sparkline: the collected data as landscape. */}
+        {sparklineValues && sparklineValues.length >= 2 && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-[58%] opacity-70 transition-opacity duration-500 group-hover:opacity-90"
+          >
+            <Sparkline
+              values={sparklineValues}
+              stretch
+              className="h-full w-full text-sage"
+            />
+          </div>
+        )}
 
         <div className="relative flex items-start justify-between">
           <ChartLineUp size={22} weight="regular" className="text-dust" />
-          {sparklineValues && sparklineValues.length >= 2 && (
-            <Sparkline values={sparklineValues} width={100} height={28} className="text-sage" />
-          )}
         </div>
         <div className="relative">
           <CountUp
             value={dataPoints}
-            duration={1}
-            className="block text-4xl font-semibold text-canvas"
+            className="block text-4xl font-semibold text-canvas sm:text-5xl"
           />
-          <div className="mt-1 text-xs font-medium text-dust">Data points collected</div>
+          <div className="mt-1.5 text-xs font-medium uppercase tracking-[0.14em] text-dust">
+            Data points collected
+          </div>
           <div className="mt-3 flex items-baseline gap-1.5 font-mono text-sm tabular-nums text-dust">
             <span className="font-semibold">+{pointsLast24h.toLocaleString()}</span>
             <span className="font-sans text-xs text-dust/80">last 24h</span>

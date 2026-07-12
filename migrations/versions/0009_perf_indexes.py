@@ -28,8 +28,7 @@ def upgrade() -> None:
         " ON notifications (organization_id) WHERE read_at IS NULL"
     )
     op.execute(
-        "CREATE INDEX idx_anomalies_metric_detected"
-        " ON anomalies (metric_id, detected_at DESC)"
+        "CREATE INDEX idx_anomalies_metric_detected ON anomalies (metric_id, detected_at DESC)"
     )
 
 

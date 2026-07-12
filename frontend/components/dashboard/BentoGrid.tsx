@@ -1,11 +1,14 @@
 "use client";
 
-// Client wrapper that staggers the entry of the bento tiles (doc 4 §7c).
-// Purely presentational: children are the already-built tile markup passed
-// down from the server component app/page.tsx.
+// Client wrapper that staggers the entry of the bento tiles (doc 4 §7c),
+// built on the animate-ui Effect primitive (fade + slide + blur). Purely
+// presentational: children are the already-built tile markup passed down
+// from the server component app/page.tsx. Each tile takes an `index` used
+// for the stagger delay; under reduced motion the delay is dropped and the
+// transition is instant, so content is never hidden or late.
 
-import { motion, useReducedMotion } from "motion/react";
-import { staggerContainer, rise } from "@/lib/motion";
+import { useReducedMotion } from "motion/react";
+import { Effect } from "@/components/animate-ui/primitives/effects/effect";
 import { cn } from "@/lib/utils";
 
 export function BentoGrid({
@@ -15,17 +18,10 @@ export function BentoGrid({
   children: React.ReactNode;
   className?: string;
 }) {
-  const reduceMotion = useReducedMotion();
-
   return (
-    <motion.div
-      initial={reduceMotion ? false : "hidden"}
-      animate="visible"
-      variants={staggerContainer}
-      className={cn("grid grid-cols-1 gap-4 md:grid-cols-12", className)}
-    >
+    <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-12", className)}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
@@ -34,17 +30,29 @@ export function BentoTile({
   className,
   colSpan,
   rowSpan,
+  index = 0,
 }: {
   children: React.ReactNode;
   className?: string;
   colSpan: number;
   rowSpan?: number;
+  /** Position in the stagger sequence; tiles reveal at index * 70ms. */
+  index?: number;
 }) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <motion.div
-      variants={rise}
+    <Effect
+      fade
+      slide={{ direction: "up", offset: 24 }}
+      blur={{ initialBlur: 5 }}
+      delay={reduceMotion ? 0 : index * 70}
+      // Reduced-motion contract (lib/motion.ts): toggle `initial` only, so
+      // the tile renders at its visible values without needing a single
+      // animation frame. Effect spreads props last, so this wins over its
+      // internal initial="hidden".
+      initial={reduceMotion ? false : "hidden"}
+      transition={{ type: "spring", stiffness: 150, damping: 22 }}
       className={cn(
         "md:col-span-12",
         colSpan === 3 && "md:col-span-3",
@@ -56,6 +64,6 @@ export function BentoTile({
       )}
     >
       {children}
-    </motion.div>
+    </Effect>
   );
 }
